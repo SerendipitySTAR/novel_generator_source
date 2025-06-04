@@ -1,0 +1,317 @@
+"""
+人物刻画智能体，负责生成详细的主要人物设定
+"""
+from typing import Dict, List, Optional, Any, Union
+from app.agents.base_agent import BaseAgent
+from app.config import settings
+
+class CharacterSculptorAgent(BaseAgent):
+    """人物刻画智能体"""
+    
+    async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        运行人物刻画智能体
+        
+        Args:
+            input_data: 输入数据，包含：
+                - narrative_concept: 小说概述
+                - world_setting: 世界观设定
+                - plot_outline: 大纲
+                - num_profiles: 生成人物设定集的数量，默认为2
+            
+        Returns:
+            Dict[str, Any]: 输出数据，包含：
+                - character_profiles: 生成的主要人物设定集列表
+        """
+        narrative_concept = input_data.get("narrative_concept", "")
+        world_setting = input_data.get("world_setting", {})
+        plot_outline = input_data.get("plot_outline", {})
+        num_profiles = input_data.get("num_profiles", 2)
+        
+        # 将世界观设定转换为文本
+        world_setting_text = self._world_setting_to_text(world_setting)
+        
+        # 从大纲中提取人物名称
+        character_names = self._extract_character_names(plot_outline)
+        
+        # 构建提示词
+        prompt_template = """你是一位洞察人性的角色设计师。根据以下小说概述、世界观和大纲，请为主要人物创建{num_profiles}套详细设定。每套设定中，每个角色应包含以下内容：
+
+1. 基本信息：姓名、性别、年龄、种族、外貌特征、衣着风格
+2. 背景故事：出身、成长经历、重要人生转折点、与世界观的关联
+3. 性格特质：核心性格、价值观、优点、缺点、癖好、口头禅
+4. 能力技能：掌握的技能、知识、特殊能力（需符合世界观设定）、力量等级（如适用）
+5. 动机与目标：内心深层驱动力、在故事中的短期/长期目标
+6. 角色弧光：预期的性格转变、成长轨迹（如从懦弱到勇敢，从迷茫到坚定）
+7. 人际关系：与其他主要人物的初步关系设定（亲友、敌人、爱慕对象、竞争对手等）
+
+小说概述:
+{narrative_concept}
+
+世界观:
+{world_setting_text}
+
+大纲:
+{plot_outline_text}
+
+需要设计的主要人物:
+{character_names}
+
+请着重刻画角色的内在动机、潜在冲突以及预期的角色发展弧光。思考并简述他们之间可能形成的人物关系。请按照以下JSON格式输出{num_profiles}套不同的人物设定，每套设定之间用"====="分隔:
+
+{{
+  "人物设定": [
+    {{
+      "基本信息": {{
+        "姓名": "...",
+        "性别": "...",
+        "年龄": "...",
+        "种族": "...",
+        "外貌特征": ["...", "..."],
+        "衣着风格": "..."
+      }},
+      "背景故事": "...",
+      "性格特质": {{
+        "核心性格": "...",
+        "价值观": "...",
+        "优点": ["...", "..."],
+        "缺点": ["...", "..."],
+        "癖好": "...",
+        "口头禅": "..."
+      }},
+      "能力技能": {{
+        "技能": ["...", "..."],
+        "知识": ["...", "..."],
+        "特殊能力": "...",
+        "力量等级": "..."
+      }},
+      "动机与目标": {{
+        "内心驱动力": "...",
+        "短期目标": "...",
+        "长期目标": "..."
+      }},
+      "角色弧光": "...",
+      "人际关系": [
+        {{"关系对象": "人物2", "关系类型": "...", "关系描述": "..."}},
+        {{"关系对象": "人物3", "关系类型": "...", "关系描述": "..."}}
+      ]
+    }},
+    {{
+      "基本信息": {{
+        "姓名": "...",
+        "性别": "...",
+        "年龄": "...",
+        "种族": "...",
+        "外貌特征": ["...", "..."],
+        "衣着风格": "..."
+      }},
+      "背景故事": "...",
+      "性格特质": {{
+        "核心性格": "...",
+        "价值观": "...",
+        "优点": ["...", "..."],
+        "缺点": ["...", "..."],
+        "癖好": "...",
+        "口头禅": "..."
+      }},
+      "能力技能": {{
+        "技能": ["...", "..."],
+        "知识": ["...", "..."],
+        "特殊能力": "...",
+        "力量等级": "..."
+      }},
+      "动机与目标": {{
+        "内心驱动力": "...",
+        "短期目标": "...",
+        "长期目标": "..."
+      }},
+      "角色弧光": "...",
+      "人际关系": [
+        {{"关系对象": "人物1", "关系类型": "...", "关系描述": "..."}},
+        {{"关系对象": "人物3", "关系类型": "...", "关系描述": "..."}}
+      ]
+    }},
+    ...
+  ],
+  "人物关系图谱": "简要描述主要人物之间的关系网络"
+}}
+
+=====
+
+...
+"""
+        
+        # 将大纲转换为文本
+        plot_outline_text = self._plot_outline_to_text(plot_outline)
+        
+        # 将人物名称列表转换为文本
+        character_names_text = "\n".join([f"- {name}" for name in character_names])
+        
+        prompt = await self._generate_prompt(prompt_template, {
+            "narrative_concept": narrative_concept,
+            "world_setting_text": world_setting_text,
+            "plot_outline_text": plot_outline_text,
+            "character_names": character_names_text,
+            "num_profiles": num_profiles
+        })
+        
+        # 调用LLM生成人物设定
+        response = await self.llm.generate_text(
+            prompt=prompt,
+            temperature=settings.AGENT_TEMPERATURE,
+            max_tokens=settings.CHARACTER_MAX_TOKENS,
+            top_p=settings.AGENT_TOP_P
+        )
+        
+        # 解析结果
+        character_profiles = []
+        raw_profiles = response.text.split("=====")
+        
+        import json
+        import re
+        
+        for profile in raw_profiles:
+            profile = profile.strip()
+            if profile:
+                try:
+                    # 使用正则表达式提取JSON部分
+                    json_match = re.search(r'\{.*\}', profile, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(0)
+                        # 解析JSON
+                        character_profile = json.loads(json_str)
+                        character_profiles.append(character_profile)
+                except Exception as e:
+                    # 如果JSON解析失败，将原始文本作为非结构化数据添加
+                    character_profiles.append({"raw_text": profile})
+        
+        return {"character_profiles": character_profiles}
+    
+    def _world_setting_to_text(self, world_setting: Dict[str, Any]) -> str:
+        """
+        将世界观设定转换为文本
+        
+        Args:
+            world_setting: 世界观设定
+            
+        Returns:
+            str: 文本形式的世界观设定
+        """
+        # 如果是原始文本，直接返回
+        if "raw_text" in world_setting:
+            return world_setting["raw_text"]
+        
+        # 否则，将结构化数据转换为文本
+        text = ""
+        
+        # 基础设定
+        if "基础设定" in world_setting:
+            text += "【基础设定】\n"
+            for key, value in world_setting["基础设定"].items():
+                text += f"- {key}: {value}\n"
+            text += "\n"
+        
+        # 地理环境
+        if "地理环境" in world_setting:
+            text += "【地理环境】\n"
+            for key, value in world_setting["地理环境"].items():
+                if isinstance(value, list):
+                    text += f"- {key}: {', '.join(value)}\n"
+                else:
+                    text += f"- {key}: {value}\n"
+            text += "\n"
+        
+        # 文化与社会
+        if "文化与社会" in world_setting:
+            text += "【文化与社会】\n"
+            for key, value in world_setting["文化与社会"].items():
+                if isinstance(value, list):
+                    text += f"- {key}: {', '.join(value)}\n"
+                else:
+                    text += f"- {key}: {value}\n"
+            text += "\n"
+        
+        # 能量体系/科技水平
+        if "能量体系/科技水平" in world_setting:
+            text += "【能量体系/科技水平】\n"
+            text += f"- 类型: {world_setting['能量体系/科技水平'].get('类型', '')}\n"
+            text += f"- 详细描述: {world_setting['能量体系/科技水平'].get('详细描述', '')}\n"
+            
+        return text
+    
+    def _plot_outline_to_text(self, plot_outline: Dict[str, Any]) -> str:
+        """
+        将大纲转换为文本
+        
+        Args:
+            plot_outline: 大纲
+            
+        Returns:
+            str: 文本形式的大纲
+        """
+        # 如果是原始文本，直接返回
+        if "raw_text" in plot_outline:
+            return plot_outline["raw_text"]
+        
+        # 否则，将结构化数据转换为文本
+        text = ""
+        
+        # 故事结构
+        if "故事结构" in plot_outline:
+            text += f"故事结构: {plot_outline['故事结构']}\n\n"
+        
+        # 章节列表
+        if "章节列表" in plot_outline and isinstance(plot_outline["章节列表"], list):
+            text += "章节列表:\n"
+            for chapter in plot_outline["章节列表"]:
+                text += f"第{chapter['章节号']}章: {chapter['标题']} (约{chapter['预计字数']}字)\n"
+                if "核心内容" in chapter:
+                    text += f"  主要场景: {', '.join(chapter['核心内容'].get('主要场景', []))}\n"
+                    text += f"  出场人物: {', '.join(chapter['核心内容'].get('出场人物', []))}\n"
+                    text += f"  核心事件: {chapter['核心内容'].get('核心事件', '')}\n"
+                    text += f"  目标与冲突: {chapter['核心内容'].get('目标与冲突', '')}\n"
+            text += "\n"
+        
+        # 多线叙事
+        if "多线叙事" in plot_outline and isinstance(plot_outline["多线叙事"], list):
+            text += "多线叙事:\n"
+            for storyline in plot_outline["多线叙事"]:
+                text += f"- {storyline['故事线名称']}:\n"
+                text += f"  涉及章节: {', '.join(map(str, storyline['涉及章节']))}\n"
+                text += f"  主要人物: {', '.join(storyline['主要人物'])}\n"
+                text += f"  核心冲突: {storyline['核心冲突']}\n"
+            text += "\n"
+        
+        return text
+    
+    def _extract_character_names(self, plot_outline: Dict[str, Any]) -> List[str]:
+        """
+        从大纲中提取人物名称
+        
+        Args:
+            plot_outline: 大纲
+            
+        Returns:
+            List[str]: 人物名称列表
+        """
+        character_names = set()
+        
+        # 如果是原始文本，返回空列表
+        if "raw_text" in plot_outline:
+            return []
+        
+        # 从章节列表中提取
+        if "章节列表" in plot_outline and isinstance(plot_outline["章节列表"], list):
+            for chapter in plot_outline["章节列表"]:
+                if "核心内容" in chapter and "出场人物" in chapter["核心内容"]:
+                    for character in chapter["核心内容"]["出场人物"]:
+                        character_names.add(character)
+        
+        # 从多线叙事中提取
+        if "多线叙事" in plot_outline and isinstance(plot_outline["多线叙事"], list):
+            for storyline in plot_outline["多线叙事"]:
+                if "主要人物" in storyline:
+                    for character in storyline["主要人物"]:
+                        character_names.add(character)
+        
+        return list(character_names)

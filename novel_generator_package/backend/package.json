@@ -1,0 +1,19 @@
+// 创建package.json文件，确保依赖完整
+{
+  "name": "novel-generator-backend",
+  "version": "1.0.0",
+  "description": "自动小说生成器后端",
+  "main": "app/main.py",
+  "scripts": {
+    "start": "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  },
+  "dependencies": {
+    "fastapi": "^0.95.0",
+    "uvicorn": "^0.21.1",
+    "pydantic": "^1.10.7",
+    "langchain": "^0.0.73",
+    "chromadb": "^0.3.21",
+    "openai": "^0.27.2",
+    "python-dotenv": "^1.0.0"
+  }
+}
