@@ -57,8 +57,72 @@ class TestPlotArchitectAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIn("### 情节转折点1", called_prompt_template_str)
 
             # Verify enhanced chapter detail prompts
-            self.assertIn("核心事件: [详细内容] (涉及哪些情节线？)", called_prompt_template_str)
-            self.assertIn("伏笔/悬念: [详细内容] (为后续哪些情节线或转折铺垫？)", called_prompt_template_str)
+            self.assertIn("核心事件: [详细内容] (涉及哪些情节线？ pacing: fast/slow, tension: rising/falling)", called_prompt_template_str)
+            self.assertIn("伏笔/悬念: [详细内容] (为后续哪些情节线或转折铺垫？ suspense_technique: e.g., dramatic_irony_hint)", called_prompt_template_str)
+
+            # New assertions for Pacing/Tension and Suspense Control sections
+            self.assertIn("## 整体叙事节奏与张力控制 (Overall Narrative Pacing and Tension Control)", called_prompt_template_str)
+            self.assertIn("铺垫与阐述 (Setup/Exposition)", called_prompt_template_str)
+            self.assertIn("上升行动 (Rising Action)", called_prompt_template_str)
+            self.assertIn("中点/不归点 (Mid-Point/Point of No Return)", called_prompt_template_str)
+            self.assertIn("高潮 (Climax)", called_prompt_template_str)
+            self.assertIn("下降行动 (Falling Action)", called_prompt_template_str)
+            self.assertIn("结局/尾声 (Resolution/Denouement)", called_prompt_template_str)
+
+            self.assertIn("## 悬念与信息控制 (Suspense & Information Control)", called_prompt_template_str)
+            self.assertIn("戏剧性反讽 (Dramatic Irony)", called_prompt_template_str)
+            self.assertIn("延迟揭示 (Delayed Revelations)", called_prompt_template_str)
+            self.assertIn("误导 (Misdirection)", called_prompt_template_str)
+            self.assertIn("多视角叙事 (Multiple POVs)", called_prompt_template_str)
+            self.assertIn("请在章节概要中，简要标注何处可能运用这些悬念技巧。", called_prompt_template_str)
+
+
+    async def test_run_in_core_idea_expansion_mode(self):
+        # Mock LLM response for expansion mode
+        self.mock_llm.generate_text.return_value = LLMResponse(text="# 大纲版本1 (基于核心创意扩展)\n## 核心故事概念\nExpanded concept.")
+
+        core_ideas_input = ["Idea 1: A lost artifact.", "Idea 2: A prophecy foretold."]
+        input_data = {
+            "mode": "expand_core_ideas",
+            "core_ideas": core_ideas_input,
+            "chapter_count": 5, # Example chapter count for expansion
+            "num_outlines": 1,
+            "world_setting": {"description": "Contextual world setting."} # Optional context
+        }
+
+        # Spy on _generate_prompt
+        with patch.object(self.agent, '_generate_prompt', new_callable=AsyncMock) as mock_generate_prompt:
+            # We also need to patch the template methods to ensure we can check which one was called
+            # or rather, check the content of the prompt passed to _generate_prompt.
+            # The agent's run method now calls self._get_expansion_prompt_template() or self._get_default_prompt_template()
+            # So we check the final prompt string.
+
+            mock_generate_prompt.return_value = "Final Expansion Prompt String"
+
+            await self.agent.run(input_data)
+
+            self.mock_llm.generate_text.assert_called_once_with(
+                prompt="Final Expansion Prompt String",
+                temperature=unittest.mock.ANY,
+                max_tokens=unittest.mock.ANY,
+                top_p=unittest.mock.ANY
+            )
+
+            called_prompt_template_str = mock_generate_prompt.call_args[0][0] # This is the template string
+            called_prompt_data = mock_generate_prompt.call_args[0][1] # This is the data dictionary
+
+            self.assertIn("你是一位富有创造力的小说策划大师。", called_prompt_template_str) # Unique to expansion prompt
+            self.assertIn("核心创意点子:", called_prompt_template_str)
+            self.assertIn("请围绕这些核心点子，完成以下任务：", called_prompt_template_str)
+            self.assertIn("提炼核心概念", called_prompt_template_str)
+            self.assertIn("构建叙事弧光", called_prompt_template_str)
+            self.assertIn("各章节概要", called_prompt_template_str)
+
+            expected_core_ideas_text = "1. Idea 1: A lost artifact.\n2. Idea 2: A prophecy foretold."
+            self.assertEqual(called_prompt_data["core_ideas"], expected_core_ideas_text)
+            self.assertEqual(called_prompt_data["chapter_count"], 5)
+            self.assertIn("Contextual world setting.", called_prompt_data["world_setting"])
+
 
     def test_parse_plot_outlines_with_new_sections(self):
         mock_llm_response_text = """

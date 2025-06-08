@@ -65,13 +65,49 @@ class TestCharacterSculptorAgent(unittest.IsolatedAsyncioTestCase):
             called_prompt_template_str = mock_generate_prompt.call_args[0][0]
 
             # Verify that the new instructions and keywords are in the prompt template
+            # Previous assertions for Internal Landscape and Relationship Dynamics should still pass if structure is maintained.
             self.assertIn("内在景观 (Internal Landscape)", called_prompt_template_str)
-            self.assertIn("内在冲突与困境", called_prompt_template_str)
-            self.assertIn("深层动机与潜意识", called_prompt_template_str)
             self.assertIn("人际关系与动态演变 (Relationship Dynamics and Evolution)", called_prompt_template_str)
-            self.assertIn("关系演变潜力", called_prompt_template_str)
 
-            # Verify that the JSON structure example in the prompt reflects the new fields
+            # New assertions for detailed backstories
+            self.assertIn("详细背景故事 (Detailed Backstory)", called_prompt_template_str)
+            self.assertIn("关键童年/成长经历 (Key Childhood/Formative Experience)", called_prompt_template_str)
+            self.assertIn("重大人生转折点 (Major Life Turning Point)", called_prompt_template_str)
+            self.assertIn("核心秘密/未解之谜 (Core Secret/Unresolved Mystery)", called_prompt_template_str)
+            self.assertIn("背景故事与潜在情节钩子 (Backstory & Potential Plot Hooks)", called_prompt_template_str)
+
+            # New assertions for plot-relevant skills
+            self.assertIn("请确保这些技能与小说的主题、世界观或预期冲突类型相关。", called_prompt_template_str)
+            self.assertIn("为每项主要技能简述其在故事中可能的应用场景或如何帮助角色克服挑战。", called_prompt_template_str)
+
+            # New assertions for plot-relevant flaws (within "性格特质")
+            self.assertIn("对于主要**缺点 (Flaws/Shortcomings)**，请思考它们如何不仅仅是性格缺陷", called_prompt_template_str)
+            self.assertIn("简述其可能如何引发冲突或使角色陷入困境", called_prompt_template_str)
+
+            # Verify that the JSON structure example in the prompt reflects the new detailed fields
+
+            # Check for detailed backstory in JSON example
+            self.assertIn("""\"背景故事\": {
+        "关键童年经历": "...",
+        "重大人生转折点": "...",
+        "核心秘密": "...",
+        "情节钩子": "..."
+      }""".replace("  ",""), called_prompt_template_str.replace("  ",""))
+
+            # Check for plot-relevant flaws in JSON example (within "性格特质")
+            self.assertIn(""""缺点": [
+          {{"缺陷": "过度自信", "情节关联": "可能导致其在关键时刻低估敌人，造成失败。"}},
+          "..."
+        ]""".replace("  ",""), called_prompt_template_str.replace("  ",""))
+
+            # Check for plot-relevant skills in JSON example (within "能力技能")
+            self.assertIn(""""技能": [
+          {{"技能名称": "精准射击", "描述": "百步穿杨的弓箭手。", "情节关联": "在远程战斗或需要精确操作的场合发挥关键作用，例如射中远处的机关。"}},
+          "..."
+        ]""".replace("  ",""), called_prompt_template_str.replace("  ",""))
+
+            # Verify existing JSON examples are still there (or updated)
+            # This one for "内在景观" was already checked in a previous version of this test, ensure it's still valid.
             self.assertIn("""\"内在景观\": {
         "动机与目标": {
           "内心驱动力": "...",

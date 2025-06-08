@@ -17,27 +17,63 @@ class PlotArchitectAgent(BaseAgent):
         
         Args:
             input_data: 输入数据，包含:
-                - narrative_concept: 小说概述
-                - world_setting: 世界观设定
-                - conflict_elements: 关键冲突元素
+                - narrative_concept: 小说概述 (for default mode)
+                - world_setting: 世界观设定 (for default mode, context for expansion mode)
+                - conflict_elements: 关键冲突元素 (for default mode)
                 - chapter_count: 章节数量
                 - num_outlines: 需要生成的大纲数量
+                - mode: "default" or "expand_core_ideas" (Optional, defaults to "default")
+                - core_ideas: List[str] (Required if mode is "expand_core_ideas")
                 
         Returns:
             Dict[str, Any]: 输出数据，包含:
                 - plot_outlines: 生成的章节大纲列表
         """
+        mode = input_data.get("mode", "default")
+        core_ideas = input_data.get("core_ideas")
+        chapter_count = input_data.get("chapter_count", 10)
+        num_outlines = input_data.get("num_outlines", 1) # num_outlines might be less relevant for core_ideas mode or could mean variations.
+
         narrative_concept = input_data.get("narrative_concept", "")
         world_setting = input_data.get("world_setting", {})
         conflict_elements = input_data.get("conflict_elements", [])
-        chapter_count = input_data.get("chapter_count", 10)
-        num_outlines = input_data.get("num_outlines", 1)
         
-        # 将世界观设定转换为文本
         world_setting_text = self._world_setting_to_text(world_setting)
+        conflict_elements_text = "\n".join([f"- {element}" for element in conflict_elements])
+
+        prompt_data = {
+            "chapter_count": chapter_count,
+            "num_outlines": num_outlines,
+            "narrative_concept": narrative_concept,
+            "world_setting": world_setting_text,
+            "conflict_elements": conflict_elements_text,
+            "core_ideas": "\n".join([f"{i+1}. {idea}" for i, idea in enumerate(core_ideas)]) if core_ideas else ""
+        }
+
+        if mode == "expand_core_ideas" and core_ideas:
+            prompt_template_to_use = self._get_expansion_prompt_template()
+        else:
+            prompt_template_to_use = self._get_default_prompt_template()
+
+        prompt = await self._generate_prompt(prompt_template_to_use, prompt_data)
+
+        # 调用LLM生成大纲
+        response = await self.llm.generate_text(
+            prompt=prompt,
+            temperature=0.7,
+            max_tokens=settings.PLOT_OUTLINE_MAX_TOKENS,
+            top_p=0.9
+        )
         
-        # 构建提示词
-        prompt_template = """
+        # 解析响应，提取大纲
+        plot_outlines = self._parse_plot_outlines(response.text)
+
+        return {
+            "plot_outlines": plot_outlines
+        }
+
+    def _get_default_prompt_template(self) -> str:
+        return """
         你是一位经验丰富的小说编辑和情节规划师。基于以下小说概述和世界观设定，并围绕指定的关键冲突元素，请规划一份包含约{chapter_count}章节的详细小说大纲。请提供{num_outlines}个版本。
 
         每个版本应包含:
@@ -71,6 +107,24 @@ class PlotArchitectAgent(BaseAgent):
         - 情节转折点1：[描述一个重要的情节转折，它应如何颠覆预期但又在情理之中？何时发生？]
         - (可选) 情节转折点2：[描述另一个情节转折，如有。]
         - 伏笔铺垫：简要说明为这些转折点埋下了哪些伏笔。
+
+        ## 整体叙事节奏与张力控制 (Overall Narrative Pacing and Tension Control)
+        在设计章节大纲时，请确保整体叙事节奏的动态变化和张力的起伏。故事应自然地经历以下阶段：
+        *   **铺垫与阐述 (Setup/Exposition):** 介绍人物、世界观及初步冲突。
+        *   **上升行动 (Rising Action):** 逐步增加风险，发展冲突，提升紧张感。
+        *   **中点/不归点 (Mid-Point/Point of No Return):** 发生重大事件，改变故事走向，主角无法回头。
+        *   **高潮 (Climax):** 紧张和冲突达到顶点，主要矛盾面临关键对决。
+        *   **下降行动 (Falling Action):** 处理高潮的直接后果。
+        *   **结局/尾声 (Resolution/Denouement):** 解主线冲突，展示新的平衡状态。
+        请在每个主要情节线（主线、副线）的梗概中，简要说明其如何对应这些叙事阶段。并在章节概要中，适当提示放置高度悬念、激烈动作或宁静反思/角色塑造的时刻。
+
+        ## 悬念与信息控制 (Suspense & Information Control)
+        为构建复杂的悬念，可以考虑运用以下技巧：
+        *   **戏剧性反讽 (Dramatic Irony):** 让读者比角色更早了解某些关键信息。
+        *   **延迟揭示 (Delayed Revelations):** 将关键信息保留到最具冲击力的时刻再揭晓。
+        *   **误导 (Misdirection):** 引导读者或角色产生错误判断。
+        *   **多视角叙事 (Multiple POVs):** (如果适用) 通过不同角色的视角控制信息流，营造悬念。
+        请在章节概要中，简要标注何处可能运用这些悬念技巧。
 
         请特别注意情节的逻辑性、节奏感（张弛有度）、高潮的铺垫与爆发，以及多线叙事的平衡与交织。
         
@@ -121,11 +175,11 @@ class PlotArchitectAgent(BaseAgent):
         ### 第1章: [章节标题]
         - 主要场景: [详细内容]
         - 出场人物: [详细内容]
-        - 核心事件: [详细内容] (涉及哪些情节线？)
+        - 核心事件: [详细内容] (涉及哪些情节线？ pacing: fast/slow, tension: rising/falling)
         - 目标与冲突: [详细内容]
         - 关键转折点: [详细内容]
         - 情感基调: [详细内容]
-        - 伏笔/悬念: [详细内容] (为后续哪些情节线或转折铺垫？)
+        - 伏笔/悬念: [详细内容] (为后续哪些情节线或转折铺垫？ suspense_technique: e.g., dramatic_irony_hint)
         
         ### 第2章: [章节标题]
         ...以此类推
@@ -133,33 +187,55 @@ class PlotArchitectAgent(BaseAgent):
         # 大纲版本2
         ...以此类推
         """
-        
-        # 将关键冲突元素转换为文本
-        conflict_elements_text = "\n".join([f"- {element}" for element in conflict_elements])
-        
-        prompt = await self._generate_prompt(prompt_template, {
-            "chapter_count": chapter_count,
-            "num_outlines": num_outlines,
-            "narrative_concept": narrative_concept,
-            "world_setting": world_setting_text,
-            "conflict_elements": conflict_elements_text
-        })
-        
-        # 调用LLM生成大纲
-        response = await self.llm.generate_text(
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=settings.PLOT_OUTLINE_MAX_TOKENS,
-            top_p=0.9
-        )
-        
-        # 解析响应，提取大纲
-        plot_outlines = self._parse_plot_outlines(response.text)
-        
-        return {
-            "plot_outlines": plot_outlines
-        }
-    
+
+    def _get_expansion_prompt_template(self) -> str:
+        return """
+        你是一位富有创造力的小说策划大师。根据以下提供的核心创意点子，请将它们扩展成一个引人入胜的、包含约{chapter_count}章节的小说大纲框架。
+
+        核心创意点子:
+        {core_ideas}
+
+        请围绕这些核心点子，完成以下任务：
+        1.  **提炼核心概念**：从这些点子中提炼出一个统一且吸引人的核心故事概念。
+        2.  **构建叙事弧光**：设计一个初步的叙事弧光，包括开端、发展、高潮和结局。明确每个阶段如何体现或推进核心创意。
+        3.  **关键角色建议**：初步设想1-3个与核心创意紧密相关的关键角色。他们的主要动机和在故事中的作用是什么？
+        4.  **主要冲突设计**：基于核心创意，设定故事的主要冲突（内部/外部）。
+        5.  **潜在转折点**：构思1-2个可能的关键转折点，这些转折点应与核心创意相关。
+        6.  **章节概要（{chapter_count}章）**：为每一章提供简短的标题和一两句话的核心内容概要，清晰地展示核心创意如何在各章节中逐步展开和实现。
+
+        如果提供了世界观设定，请在构思时作为参考背景：
+        世界观设定参考（可选）:
+        {world_setting}
+
+        请按照以下格式输出（如果适用，可提供{num_outlines}个不同侧重点的扩展版本，用 # 大纲版本X 分隔）：
+
+        # 大纲版本1 (基于核心创意扩展)
+
+        ## 核心故事概念
+        [根据核心创意提炼的故事核心概念]
+
+        ## 初步叙事弧光
+        - 开端: [描述，并说明如何体现核心创意]
+        - 发展: [描述，并说明如何体现核心创意]
+        - 高潮: [描述，并说明如何体现核心创意]
+        - 结局: [描述，并说明如何体现核心创意]
+
+        ## 关键角色建议
+        - 角色1: [姓名/类型，动机，作用，与核心创意的关联]
+        - 角色2: [姓名/类型，动机，作用，与核心创意的关联]
+
+        ## 主要冲突
+        [描述主要冲突，以及它如何源于或服务于核心创意]
+
+        ## 潜在转折点
+        - 转折点1: [描述，与核心创意的关联]
+
+        ## 各章节概要
+        1.  [章节标题]: [核心内容概要，体现核心创意]
+        2.  [章节标题]: [核心内容概要，体现核心创意]
+        ...
+        """
+
     def _world_setting_to_text(self, world_setting: Dict[str, Any]) -> str:
         """
         将世界观设定转换为文本
@@ -218,7 +294,7 @@ class PlotArchitectAgent(BaseAgent):
                 return ""
 
             outline["structure"] = extract_section_content(outline_text, "总体故事结构")
-            
+
             # New sections parsing
             narrative_details_text = extract_section_content(outline_text, "叙事结构与多线叙事详情")
             if narrative_details_text:
