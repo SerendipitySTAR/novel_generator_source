@@ -67,6 +67,7 @@ class ChapterChroniclerAgent(BaseAgent):
         你是一位{writing_style}小说家，正在撰写小说的第{chapter_number}章：{chapter_title}。
 
         {retry_guidance}
+        {revision_guidance}
 
         你的任务是根据以下信息续写：
 
@@ -200,21 +201,29 @@ class ChapterChroniclerAgent(BaseAgent):
         word_count = chapter_outline.get("word_count", settings.DEFAULT_CHAPTER_LENGTH)
 
         # Placeholder values for new inputs, to be replaced by actual data from input_data when available
-        novel_progress = input_data.get("novel_progress", "未指定小说整体进展") # e.g., "故事初期", "中期发展", "接近高潮"
-        chapter_type = input_data.get("chapter_type", "未指定章节类型") # e.g., "铺垫", "冲突", "解谜"
-        tension_level = input_data.get("tension_level", "未指定情绪张力") # e.g., "低 - 构建期待", "高 - 顶点冲突"
-        long_term_goals = input_data.get("long_term_goals", "未指定长期目标/线索") # e.g., "推进主角A的任务", "揭示反派B的动机"
+        novel_progress = input_data.get("novel_progress", "未指定小说整体进展")
+        chapter_type = input_data.get("chapter_type", "未指定章节类型")
+        tension_level = input_data.get("tension_level", "未指定情绪张力")
+        long_term_goals = input_data.get("long_term_goals", "未指定长期目标/线索")
 
+        # Specific feedback for revision
+        retry_feedback_data = input_data.get("retry_feedback")
+        revision_guidance_text = ""
+        if retry_feedback_data:
+            formatted_feedback = self._format_retry_feedback(retry_feedback_data)
+            if formatted_feedback:
+                revision_guidance_text = f"## 针对上一版内容的修改建议 (Suggestions for Revising the Previous Version):\n{formatted_feedback}"
 
-        prompt = await self._generate_prompt(prompt_template, {
+        prompt_fill_data = {
             "writing_style": writing_style,
             "chapter_number": chapter_number,
             "chapter_title": chapter_title,
-            "retry_guidance": retry_guidance,
+            "retry_guidance": retry_guidance, # Generic retry advice
+            "revision_guidance": revision_guidance_text, # Specific feedback
             "world_setting": world_setting_text,
             "chapter_outline": chapter_outline_text,
             "character_states": character_states_text,
-            "enhanced_summary": enhanced_summary, # This is the formatted string from _generate_enhanced_summary
+            "enhanced_summary": enhanced_summary,
             "novel_progress": novel_progress,
             "chapter_type": chapter_type,
             "tension_level": tension_level,
@@ -222,7 +231,10 @@ class ChapterChroniclerAgent(BaseAgent):
             "coherence_requirements": coherence_requirements,
             "branch_info": branch_info,
             "word_count": word_count
-        })
+        }
+        # print(f"DEBUG: Prompt fill data: {prompt_fill_data}")
+
+        prompt = await self._generate_prompt(prompt_template, prompt_fill_data)
         
         # 调用LLM生成章节内容
         response = await self.llm.generate_text(
@@ -560,3 +572,63 @@ class ChapterChroniclerAgent(BaseAgent):
         #    formatted_enhanced_summary += f"\n## 补充前情提要:\n{basic_summary}"
 
         return formatted_enhanced_summary.strip()
+
+    def _format_retry_feedback(self, feedback: Dict[str, Any]) -> str:
+        """
+        Formats structured feedback into a human-readable string for the prompt.
+        """
+        if not feedback:
+            return ""
+
+        parts = []
+
+        # Handling feedback from QualityGuardianAgent
+        # evaluation_reasons might contain detailed breakdown per dimension.
+        # improvement_suggestions is a list of strings.
+        if "evaluation_reasons" in feedback or "improvement_suggestions" in feedback:
+            parts.append("根据上一版的评估，请注意以下几点：")
+
+            reasons = feedback.get("evaluation_reasons")
+            if isinstance(reasons, dict): # If reasons are per dimension
+                for dimension, reason_text in reasons.items():
+                    if reason_text and "error" not in dimension.lower() and "error" not in reason_text.lower() and reason_text != "评分理由...":
+                        # We are looking for negative feedback here, usually in evaluation_reasons or negative_aspects
+                        # This part might need more specific keys if QualityGuardian provides explicit negative_aspects
+                        parts.append(f"- {dimension}相关问题: {reason_text}")
+            elif isinstance(reasons, str) and reasons: # If reasons is a single string
+                 parts.append(f"- 综合评估问题: {reasons}")
+
+
+            suggestions = feedback.get("improvement_suggestions")
+            if suggestions and isinstance(suggestions, list):
+                parts.append("\n改进建议如下：")
+                for i, suggestion in enumerate(suggestions):
+                    parts.append(f"  - {suggestion}")
+
+        # Handling feedback from ContentIntegrityAgent (audit_report)
+        audit_report = feedback.get("audit_report")
+        if audit_report and isinstance(audit_report, dict):
+            issues = audit_report.get("具体问题点")
+            recommendations = audit_report.get("改进建议")
+
+            if issues and isinstance(issues, list) and any(issues):
+                parts.append("\n上一版内容存在以下具体问题点：")
+                for i, issue in enumerate(issues):
+                    parts.append(f"  - 问题{i+1}: {issue}")
+
+            if recommendations and isinstance(recommendations, list) and any(recommendations):
+                parts.append("\n针对这些问题的改进建议：")
+                for i, rec in enumerate(recommendations):
+                    parts.append(f"  - 建议{i+1}: {rec}")
+
+        # Handling direct negative_aspects if provided (more direct from a potential simpler feedback structure)
+        negative_aspects = feedback.get("negative_aspects")
+        if negative_aspects and isinstance(negative_aspects, list):
+            parts.append("\n先前版本的主要问题：")
+            for aspect in negative_aspects:
+                parts.append(f"  - {aspect}")
+
+        if not parts or (len(parts)==1 and parts[0] == "根据上一版的评估，请注意以下几点："): # check if only the intro was added
+            return "请根据之前的反馈进行修改和提升。" # Generic if specific parsing fails but feedback was intended
+
+        return "\n".join(parts)

@@ -31,9 +31,25 @@ class NovelWorkflow:
             "current_chapter_quality": None, # Placeholder for quality score
             "current_chapter_feedback": None, # Placeholder for feedback
             "current_chapter_transition_score": None, # Placeholder for transition score
+            "current_retry_feedback": None, # For passing feedback to retries
+            "current_chapter_evaluation_report": None, # Placeholder for eval report
         }
     
     # Placeholder Node Implementations
+    def _prepare_retry_feedback_node(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepares the retry feedback to be used by ChapterChroniclerAgent."""
+        print("Workflow Node: _prepare_retry_feedback_node - Preparing feedback for chapter retry.")
+        evaluation_report = state_data.get('current_chapter_evaluation_report')
+        if evaluation_report:
+            # For now, pass the whole report. ChapterChroniclerAgent's _format_retry_feedback
+            # is designed to pick relevant parts.
+            state_data['current_retry_feedback'] = evaluation_report
+            print(f"DEBUG: Retry feedback set: {evaluation_report}")
+        else:
+            state_data['current_retry_feedback'] = None # Ensure it's None if no report
+            print("DEBUG: No evaluation report found for retry feedback.")
+        return state_data
+
     def _assess_chapter_transition(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
         """Placeholder node for assessing chapter transition quality."""
         print("Workflow Node: _assess_chapter_transition - Chapter transition assessment would happen here.")
@@ -49,12 +65,15 @@ class NovelWorkflow:
         return state_data
 
     def _update_cumulative_quality_scores(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Node to update cumulative quality scores for chapters."""
-        print("Workflow Node: _update_cumulative_quality_scores - Updating cumulative quality scores.")
+        """Node to update cumulative quality scores for chapters and clear retry feedback."""
+        print("Workflow Node: _update_cumulative_quality_scores - Updating cumulative quality scores and clearing retry feedback.")
         current_chapter_num = state_data.get('current_chapter', 0)
         # Assuming 'current_chapter_quality' and 'current_chapter_feedback' are populated by 'evaluate_chapter' or 'polish_chapter'
+        # Also assuming 'current_chapter_evaluation_report' is set by the 'evaluate_chapter' node
         quality_score = state_data.get('current_chapter_quality', 'N/A')
-        feedback = state_data.get('current_chapter_feedback', 'N/A')
+        # Feedback for cumulative scores might be a summary or the full report.
+        # For simplicity, let's assume 'current_chapter_feedback' is a textual summary derived from 'current_chapter_evaluation_report'.
+        feedback_summary = state_data.get('current_chapter_feedback', 'N/A')
 
         # Ensure 'cumulative_quality_scores' list exists
         if 'cumulative_quality_scores' not in state_data:
@@ -63,10 +82,15 @@ class NovelWorkflow:
         state_data['cumulative_quality_scores'].append({
             "chapter_number": current_chapter_num,
             "quality_score": quality_score,
-            "feedback": feedback,
-            "transition_score": state_data.get('current_chapter_transition_score', 'N/A') # Also log transition score
+            "feedback_summary": feedback_summary, # Storing summary
+            "transition_score": state_data.get('current_chapter_transition_score', 'N/A')
         })
         print(f"Cumulative scores: {state_data['cumulative_quality_scores']}")
+
+        # Clear retry feedback after successful chapter processing
+        state_data['current_retry_feedback'] = None
+        state_data['current_chapter_evaluation_report'] = None # Also clear the report used for feedback
+        print("Cleared current_retry_feedback and current_chapter_evaluation_report.")
         return state_data
 
     def _check_long_term_consistency(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,9 +134,10 @@ class NovelWorkflow:
         workflow.add_node("generate_plot_branches", {})
         workflow.add_node("select_plot_branch", {})
         workflow.add_node("generate_chapter", {})
-        workflow.add_node("assess_chapter_transition", self._assess_chapter_transition) # New Node
-        workflow.add_node("evaluate_chapter", {})
-        workflow.add_node("retry_chapter", {})
+        workflow.add_node("assess_chapter_transition", self._assess_chapter_transition)
+        workflow.add_node("evaluate_chapter", {}) # Placeholder for the actual evaluation logic/agent call
+        workflow.add_node("prepare_retry_feedback", self._prepare_retry_feedback_node) # New Node
+        workflow.add_node("retry_chapter", {}) # This node likely just transitions, actual retry logic is re-entering generate_chapter
         workflow.add_node("user_edit_chapter", {})
         workflow.add_node("polish_chapter", {})
         workflow.add_node("update_cumulative_scores", self._update_cumulative_quality_scores) # New Node
@@ -159,14 +184,15 @@ class NovelWorkflow:
 
         workflow.add_conditional_edges(
             "evaluate_chapter",
-            lambda x: self._evaluate_chapter_decision(x),
+            lambda x: self._evaluate_chapter_decision(x), # This method returns "retry", "user_edit", or "accept"
             {
-                "retry": "retry_chapter",
+                "retry": "prepare_retry_feedback", # Changed: if retry, first prepare feedback
                 "user_edit": "user_edit_chapter",
-                "accept": "polish_chapter" # Accepted chapters go to polish (or directly to update scores if polish is skipped)
+                "accept": "polish_chapter"
             }
         )
-        workflow.add_edge("retry_chapter", "generate_chapter")
+        workflow.add_edge("prepare_retry_feedback", "retry_chapter") # Then from prepare_feedback to retry_chapter
+        workflow.add_edge("retry_chapter", "generate_chapter") # retry_chapter should lead back to generate_chapter
         workflow.add_edge("user_edit_chapter", "polish_chapter")
 
         # If polish_chapter is chosen or skipped, it goes to update_cumulative_scores

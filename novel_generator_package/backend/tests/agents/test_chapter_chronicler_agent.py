@@ -136,6 +136,115 @@ class TestChapterChroniclerAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIn("味觉 (Taste)", prompt_template_arg)
             self.assertIn("自然融入", prompt_template_arg) # "Natural Integration"
 
+            # Check that revision_guidance is empty when no feedback is provided
+            self.assertEqual(prompt_data_arg["revision_guidance"], "")
+
+
+    async def test_generate_chapter_prompt_with_retry_feedback(self):
+        # Mock LLM response
+        self.mock_llm.generate_text.return_value = LLMResponse(text="Generated chapter content after feedback.")
+
+        # Mock _generate_enhanced_summary
+        self.agent._generate_enhanced_summary = AsyncMock(return_value="FORMATTED SUMMARY")
+
+        mock_retry_feedback = {
+            "audit_report": {
+                "具体问题点": ["Issue 1 from audit.", "Issue 2 from audit."],
+                "改进建议": ["Suggestion A from audit.", "Suggestion B from audit."]
+            },
+            "improvement_suggestions": ["General suggestion C."], # Test merging if both exist
+            "negative_aspects": ["A general negative point."]
+        }
+
+        formatted_feedback_expected_str = self.agent._format_retry_feedback(mock_retry_feedback)
+
+        input_data_with_feedback = {
+            "chapter_outline": {"number": 2, "title": "The Second Try", "word_count": 150},
+            "world_setting": {}, "character_profiles": [], "writing_style": "Concise",
+            "retry_count": 1, # Important for {retry_guidance}
+            "retry_feedback": mock_retry_feedback
+        }
+
+        with patch.object(self.agent, '_generate_prompt', new_callable=AsyncMock) as mock_generate_prompt:
+            mock_generate_prompt.return_value = "Final Prompt With Feedback"
+
+            # Patch _format_retry_feedback to check it's called and to control its output if needed,
+            # or just use the real method and check against its expected output.
+            # For this test, let's use the real method's output.
+
+            await self.agent._generate_chapter(input_data_with_feedback)
+
+            args, _ = mock_generate_prompt.call_args
+            prompt_template_arg = args[0]
+            prompt_data_arg = args[1]
+
+            self.assertIn("{revision_guidance}", prompt_template_arg)
+            self.assertIn("## 针对上一版内容的修改建议 (Suggestions for Revising the Previous Version):", prompt_data_arg["revision_guidance"])
+            self.assertIn("Issue 1 from audit.", prompt_data_arg["revision_guidance"])
+            self.assertIn("Suggestion A from audit.", prompt_data_arg["revision_guidance"])
+            self.assertIn("General suggestion C.", prompt_data_arg["revision_guidance"])
+            self.assertIn("A general negative point.", prompt_data_arg["revision_guidance"])
+
+            self.assertEqual(prompt_data_arg["revision_guidance"], f"## 针对上一版内容的修改建议 (Suggestions for Revising the Previous Version):\n{formatted_feedback_expected_str}")
+
+            # Ensure generic retry_guidance is also present
+            self.assertIn("重试指导（第2次生成）", prompt_data_arg["retry_guidance"])
+
+
+    def test_format_retry_feedback_quality_guardian_style(self):
+        feedback = {
+            "evaluation_reasons": {"情节连贯性": "有点跳跃 (A bit jumpy)"},
+            "improvement_suggestions": ["增加过渡场景 (Add transition scene)"]
+        }
+        expected = "根据上一版的评估，请注意以下几点：\n- 情节连贯性相关问题: 有点跳跃 (A bit jumpy)\n\n改进建议如下：\n  - 增加过渡场景 (Add transition scene)"
+        self.assertEqual(self.agent._format_retry_feedback(feedback), expected)
+
+    def test_format_retry_feedback_content_integrity_style(self):
+        feedback = {
+            "audit_report": {
+                "具体问题点": ["人物动机不明确 (Character motivation unclear)"],
+                "改进建议": ["在前文铺垫一下心理活动 (Foreshadow psychological activity earlier)"]
+            }
+        }
+        expected = "根据上一版的评估，请注意以下几点：\n\n上一版内容存在以下具体问题点：\n  - 问题1: 人物动机不明确 (Character motivation unclear)\n\n针对这些问题的改进建议：\n  - 建议1: 在前文铺垫一下心理活动 (Foreshadow psychological activity earlier)"
+        # The initial "根据上一版的评估..." comes because audit_report is not the first check in _format_retry_feedback,
+        # and the list `parts` is initialized with it if evaluation_reasons or improvement_suggestions are checked first.
+        # This is acceptable, or the _format_retry_feedback can be made more mutually exclusive.
+        # For now, let's assume the current logic of _format_retry_feedback which might prepend the generic line.
+        # Actually, the current logic will produce the "根据上一版的评估..." only if "evaluation_reasons" or "improvement_suggestions" is present.
+        # Let's adjust the expected for current logic:
+        expected_direct = "上一版内容存在以下具体问题点：\n  - 问题1: 人物动机不明确 (Character motivation unclear)\n\n针对这些问题的改进建议：\n  - 建议1: 在前文铺垫一下心理活动 (Foreshadow psychological activity earlier)"
+        # Re-evaluating _format_retry_feedback, the first `if` is `if "evaluation_reasons" in feedback or "improvement_suggestions" in feedback:`.
+        # If these are not present, the "根据上一版的评估..." line is NOT added. This is correct.
+        self.assertEqual(self.agent._format_retry_feedback(feedback), expected_direct)
+
+
+    def test_format_retry_feedback_direct_negatives_and_suggestions(self):
+        feedback = {
+            "negative_aspects": ["节奏太慢 (Pacing too slow)"],
+            "improvement_suggestions": ["删除不必要的描写 (Remove unnecessary descriptions)"]
+        }
+        # Expected will include the intro line for improvement_suggestions.
+        expected = "根据上一版的评估，请注意以下几点：\n\n改进建议如下：\n  - 删除不必要的描写 (Remove unnecessary descriptions)\n\n先前版本的主要问题：\n  - 节奏太慢 (Pacing too slow)"
+        self.assertEqual(self.agent._format_retry_feedback(feedback), expected)
+
+        feedback_only_neg = {"negative_aspects": ["节奏太慢 (Pacing too slow)"]}
+        expected_only_neg = "先前版本的主要问题：\n  - 节奏太慢 (Pacing too slow)"
+        self.assertEqual(self.agent._format_retry_feedback(feedback_only_neg), expected_only_neg)
+
+
+    def test_format_retry_feedback_empty_or_partial(self):
+        self.assertEqual(self.agent._format_retry_feedback({}), "请根据之前的反馈进行修改和提升。")
+        self.assertEqual(self.agent._format_retry_feedback({"improvement_suggestions": []}), "请根据之前的反馈进行修改和提升。")
+        feedback_empty_reason = {"evaluation_reasons": {"some_key": ""}}
+        self.assertEqual(self.agent._format_retry_feedback(feedback_empty_reason), "请根据之前的反馈进行修改和提升。")
+        feedback_empty_audit = {"audit_report": {"具体问题点": [], "改进建议": []}}
+        self.assertEqual(self.agent._format_retry_feedback(feedback_empty_audit), "请根据之前的反馈进行修改和提升。")
+
+    def test_format_retry_feedback_no_issues_found_style(self):
+        feedback = {"evaluation_reasons": {}, "improvement_suggestions": []} # Empty but keys exist
+        self.assertEqual(self.agent._format_retry_feedback(feedback), "请根据之前的反馈进行修改和提升。")
+
 
 if __name__ == '__main__':
     unittest.main()

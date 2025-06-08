@@ -163,7 +163,7 @@ class ContentIntegrityAgent(BaseAgent):
 预设风格:
 {writing_style}
 
-请为每个维度打分（按权重），并给出总评和具体问题点。请按照以下JSON格式输出：
+请为每个维度打分（按权重），并给出总评和具体问题点。在提供“具体问题点”和“改进建议”时，请确保它们是具体且可操作的，以便用于指导后续的修订。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{

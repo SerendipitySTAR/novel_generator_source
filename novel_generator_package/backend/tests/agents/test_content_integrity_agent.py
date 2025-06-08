@@ -57,6 +57,9 @@ class TestContentIntegrityAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"角色弧光完整性": 分数', called_prompt_template_str)
             self.assertIn('"逻辑连贯性": 分数', called_prompt_template_str) # New name for old criteria
 
+            # Verify instruction for actionable feedback
+            self.assertIn("在提供“具体问题点”和“改进建议”时，请确保它们是具体且可操作的，以便用于指导后续的修订。", called_prompt_template_str)
+
     async def test_full_content_audit_parsing_with_new_dimensions(self):
         mock_response_json = {
             "dimension_scores": {

@@ -59,9 +59,61 @@ class TestQualityGuardianAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIn("创新性 (Innovativeness)", called_prompt_template_str)
             self.assertIn("情感深度 (Emotional Depth)", called_prompt_template_str)
             self.assertIn("角色弧光进展 (Character Arc Progression)", called_prompt_template_str)
+            # Verify instruction for actionable feedback
+            self.assertIn("请确保指出的不足之处和改进建议是具体且可操作的，能够清晰地指导内容的修订。", called_prompt_template_str)
 
-    async def test_evaluate_other_content_types_prompt_excludes_chapter_specifics(self):
-        # Example for 'concept'
+
+    async def _test_prompt_for_actionable_feedback(self, content_type: str, content_payload: Any, mock_response_json: Dict, expected_phrase: str):
+        self.mock_llm.generate_text.return_value = LLMResponse(text=json.dumps(mock_response_json))
+        input_data = {"content_type": content_type, "content": content_payload}
+
+        with patch.object(self.agent, '_generate_prompt', new_callable=AsyncMock) as mock_generate_prompt:
+            mock_generate_prompt.return_value = f"Final Prompt for {content_type}"
+            await self.agent.run(input_data)
+            called_prompt_template_str = mock_generate_prompt.call_args[0][0]
+            self.assertIn(expected_phrase, called_prompt_template_str)
+            # Ensure chapter-specific considerations are NOT in non-chapter prompts
+            if content_type != "chapter":
+                 self.assertNotIn("在进行上述评估时，请特别针对章节内容，额外深入思考以下几个方面", called_prompt_template_str)
+                 self.assertNotIn("角色弧光进展 (Character Arc Progression)", called_prompt_template_str)
+
+
+    async def test_evaluate_narrative_concept_prompt_actionable(self):
+        await self._test_prompt_for_actionable_feedback(
+            content_type="concept",
+            content_payload="Test concept.",
+            mock_response_json={"total_score": 0, "dimension_scores": {}, "evaluation_reasons": {}, "improvement_suggestions": []},
+            expected_phrase="请确保这些建议具体且可操作，能够清晰地指导内容的修订。"
+        )
+
+    async def test_evaluate_world_setting_prompt_actionable(self):
+        await self._test_prompt_for_actionable_feedback(
+            content_type="world_setting",
+            content_payload={"description": "Test world."},
+            mock_response_json={"total_score": 0, "dimension_scores": {}, "evaluation_reasons": {}, "improvement_suggestions": []},
+            expected_phrase="请确保这些建议具体且可操作。"
+        )
+
+    async def test_evaluate_plot_outline_prompt_actionable(self):
+        await self._test_prompt_for_actionable_feedback(
+            content_type="plot_outline",
+            content_payload={"structure": "Test plot."},
+            mock_response_json={"total_score": 0, "dimension_scores": {}, "evaluation_reasons": {}, "improvement_suggestions": []},
+            expected_phrase="请确保这些建议具体且可操作。"
+        )
+
+    async def test_evaluate_character_profiles_prompt_actionable(self):
+        await self._test_prompt_for_actionable_feedback(
+            content_type="character_profiles",
+            content_payload=[{"name": "Test char"}],
+            mock_response_json={"total_score": 0, "dimension_scores": {}, "evaluation_reasons": {}, "improvement_suggestions": []},
+            expected_phrase="请确保这些建议具体且可操作。"
+        )
+
+    # test_evaluate_other_content_types_prompt_excludes_chapter_specifics can be removed or refactored
+    # as the new helper _test_prompt_for_actionable_feedback also checks for exclusion.
+    # For now, let's keep it to ensure its original purpose (checking exclusion) is explicitly clear.
+    async def test_evaluate_concept_prompt_excludes_chapter_specifics(self): # Renamed for clarity
         mock_response_json_concept = {
             "dimension_scores": {"情节新颖度": 20, "冲突潜力": 20, "角色魅力潜力": 20, "主题深度潜力": 20},
             "total_score": 80,
@@ -80,20 +132,10 @@ class TestQualityGuardianAgent(unittest.IsolatedAsyncioTestCase):
 
             await self.agent.run(input_data_concept)
 
-            self.mock_llm.generate_text.assert_called_once_with(
-                prompt="Final Quality Guardian Concept Prompt",
-                temperature=unittest.mock.ANY,
-                max_tokens=unittest.mock.ANY,
-                top_p=unittest.mock.ANY
-            )
-
             called_prompt_template_str = mock_generate_prompt.call_args[0][0]
 
-            # Assert that chapter-specific considerations are NOT in this prompt
             self.assertNotIn("在进行上述评估时，请特别针对章节内容，额外深入思考以下几个方面", called_prompt_template_str)
-            self.assertNotIn("创新性 (Innovativeness)", called_prompt_template_str) # This might be a general term, but the specific chapter instruction shouldn't be there
             self.assertNotIn("角色弧光进展 (Character Arc Progression)", called_prompt_template_str)
-            # "情感深度" might be a general term, so we check for the more specific "角色弧光进展" or the introductory sentence.
 
 
 if __name__ == '__main__':

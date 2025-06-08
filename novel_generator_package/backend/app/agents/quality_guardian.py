@@ -98,7 +98,7 @@ class QualityGuardianAgent(BaseAgent):
 小说概述:
 {concept}
 
-请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请确保这些建议具体且可操作，能够清晰地指导内容的修订。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{
@@ -207,7 +207,7 @@ class QualityGuardianAgent(BaseAgent):
 世界观设定:
 {world_setting_text}
 
-请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请确保这些建议具体且可操作。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{
@@ -316,7 +316,7 @@ class QualityGuardianAgent(BaseAgent):
 小说大纲:
 {plot_outline_text}
 
-请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请确保这些建议具体且可操作。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{
@@ -425,7 +425,7 @@ class QualityGuardianAgent(BaseAgent):
 人物设定:
 {character_profiles_text}
 
-请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请确保这些建议具体且可操作。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{
@@ -759,7 +759,7 @@ class QualityGuardianAgent(BaseAgent):
 
 {context_info}
 
-请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请确保指出的不足之处和改进建议是具体且可操作的，能够清晰地指导内容的修订。请按照以下JSON格式输出：
 
 {{
   "dimension_scores": {{
