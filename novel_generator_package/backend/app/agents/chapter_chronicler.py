@@ -41,11 +41,11 @@ class ChapterChroniclerAgent(BaseAgent):
     
     async def _generate_chapter(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        生成章节内容
-        
+        生成章节内容 - 增强版本，支持连贯性预检查和智能重试
+
         Args:
             input_data: 输入数据
-            
+
         Returns:
             Dict[str, Any]: 输出数据
         """
@@ -56,27 +56,36 @@ class ChapterChroniclerAgent(BaseAgent):
         kb_context = input_data.get("kb_context", [])
         writing_style = input_data.get("writing_style", "")
         selected_branch = input_data.get("selected_branch", {})
-        
-        # 构建提示词
+        previous_chapters = input_data.get("previous_chapters", [])  # 新增：前面章节
+        retry_count = input_data.get("retry_count", 0)  # 新增：重试次数
+
+        # 增强前情提要生成（使用分层上下文）
+        enhanced_summary = await self._generate_enhanced_summary(previous_chapters, world_setting, character_profiles, previous_summary)
+
+        # 构建增强的提示词
         prompt_template = """
         你是一位{writing_style}小说家，正在撰写小说的第{chapter_number}章：{chapter_title}。
-        
+
+        {retry_guidance}
+
         你的任务是根据以下信息续写：
-        
+
         ## 世界观核心：
         {world_setting}
-        
+
         ## 本章大纲指引：
         {chapter_outline}
-        
+
         ## 主要登场人物当前状态与目标：
         {character_states}
-        
-        ## 前情提要：
-        {previous_summary}
-        
+
+        ## 增强前情提要：
+        {enhanced_summary}
+
+        {coherence_requirements}
+
         {branch_info}
-        
+
         ## 写作要求：
         1. 严格遵循以上所有设定和前情。
         2. 保持{writing_style}风格。
@@ -85,7 +94,8 @@ class ChapterChroniclerAgent(BaseAgent):
         5. 推动情节向大纲指定方向发展。
         6. 字数约{word_count}字。
         7. 章节内容要完整，包含开头、发展和结尾。
-        
+        8. 特别注意与前面章节的连贯性和逻辑一致性。
+
         请开始撰写本章内容：
         """
         
@@ -110,28 +120,53 @@ class ChapterChroniclerAgent(BaseAgent):
         
         # 提取知识库上下文
         kb_context_text = "\n".join([f"- {item.get('text', '')}" for item in kb_context])
-        
+
         # 分支信息
         branch_info = ""
         if selected_branch:
             branch_info = f"""
             ## 选定的剧情走向：
             {selected_branch.get('description', '')}
-            
+
             影响：{selected_branch.get('impact', '')}
             """
-        
+
+        # 重试指导
+        retry_guidance = ""
+        if retry_count > 0:
+            retry_guidance = f"""
+            ## 重试指导（第{retry_count + 1}次生成）：
+            前面的生成可能存在连贯性或质量问题，请特别注意：
+            1. 确保与前面章节的逻辑连贯性
+            2. 保持人物性格和行为的一致性
+            3. 遵循世界观设定和规则
+            4. 提高文笔质量和叙事节奏
+            """
+
+        # 连贯性要求
+        coherence_requirements = ""
+        if previous_chapters:
+            coherence_requirements = """
+            ## 连贯性要求：
+            1. 确保时间线的连续性和合理性
+            2. 人物的情感状态和关系发展要符合前面章节的铺垫
+            3. 世界观元素的使用要与已建立的设定保持一致
+            4. 情节发展要有逻辑性，避免突兀的转折
+            """
+
         # 预计字数
         word_count = chapter_outline.get("word_count", settings.DEFAULT_CHAPTER_LENGTH)
-        
+
         prompt = await self._generate_prompt(prompt_template, {
             "writing_style": writing_style,
             "chapter_number": chapter_number,
             "chapter_title": chapter_title,
+            "retry_guidance": retry_guidance,
             "world_setting": world_setting_text,
             "chapter_outline": chapter_outline_text,
             "character_states": character_states_text,
-            "previous_summary": previous_summary,
+            "enhanced_summary": enhanced_summary,
+            "coherence_requirements": coherence_requirements,
             "branch_info": branch_info,
             "word_count": word_count
         })
@@ -412,3 +447,48 @@ class ChapterChroniclerAgent(BaseAgent):
             
         parts = text.split(section_marker, 1)[1].split("##", 1)
         return parts[0].strip()
+
+    async def _generate_enhanced_summary(self, previous_chapters: List[Dict], world_setting: Dict, character_profiles: List[Dict], basic_summary: str) -> str:
+        """
+        生成增强的前情提要，整合多层次上下文信息
+
+        Args:
+            previous_chapters: 前面章节
+            world_setting: 世界观设定
+            character_profiles: 人物设定
+            basic_summary: 基础前情提要
+
+        Returns:
+            str: 增强的前情提要
+        """
+        if not previous_chapters:
+            return "这是故事的开始。\n\n" + basic_summary
+
+        # 使用 ContextSynthesizerAgent 生成分层上下文
+        from app.agents.context_synthesizer import ContextSynthesizerAgent
+
+        context_agent = ContextSynthesizerAgent(llm=self.llm)
+
+        layered_context = await context_agent.run({
+            "chapters": previous_chapters,
+            "world_setting": world_setting,
+            "character_profiles": character_profiles,
+            "mode": "layered"
+        })
+
+        # 整合分层上下文和基础前情提要
+        enhanced_summary = f"""
+## 故事背景
+{layered_context.get('global_context', '')}
+
+## 近期发展
+{layered_context.get('medium_context', '')}
+
+## 当前状况
+{layered_context.get('immediate_context', '')}
+
+## 详细前情提要
+{basic_summary}
+"""
+
+        return enhanced_summary.strip()

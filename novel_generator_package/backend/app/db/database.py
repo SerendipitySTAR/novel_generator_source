@@ -12,7 +12,7 @@ from app.models.base import Base
 # 根据环境选择数据库
 if settings.DEBUG:
     # 开发环境使用SQLite
-    DATABASE_URL = "sqlite:///./novel_generator.db"
+    DATABASE_URL = "sqlite:///../../novel_generator.db"
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},

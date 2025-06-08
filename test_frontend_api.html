@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端API测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; }
+        button { padding: 10px 20px; margin: 5px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1565c0; }
+    </style>
+</head>
+<body>
+    <h1>前端API测试</h1>
+    <p>项目ID: 2a230931-17cd-4584-8d79-cfa14811be78</p>
+    
+    <button onclick="testGetChapters()">测试获取章节列表</button>
+    <button onclick="testGetProject()">测试获取项目信息</button>
+    <button onclick="clearResults()">清空结果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8002/api';
+        const PROJECT_ID = '2a230931-17cd-4584-8d79-cfa14811be78';
+
+        function addResult(content, isError = false) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+            resultDiv.innerHTML = content;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testGetChapters() {
+            try {
+                addResult('正在获取章节列表...');
+                
+                const response = await fetch(`${API_BASE_URL}/projects/${PROJECT_ID}/chapters`);
+                
+                addResult(`响应状态: ${response.status} ${response.statusText}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const chapters = await response.json();
+                
+                addResult(`✅ 成功获取章节列表！`);
+                addResult(`章节数量: ${chapters.length}`);
+                
+                chapters.forEach((chapter, index) => {
+                    addResult(`
+                        <strong>第${chapter.chapter_number}章</strong><br>
+                        ID: ${chapter.id}<br>
+                        标题: ${chapter.title}<br>
+                        内容长度: ${chapter.content ? chapter.content.length : 0}字<br>
+                        状态: ${chapter.status}<br>
+                        创建时间: ${chapter.created_at}
+                    `);
+                });
+                
+            } catch (error) {
+                addResult(`❌ 获取章节列表失败: ${error.message}`, true);
+                console.error('获取章节列表失败:', error);
+            }
+        }
+
+        async function testGetProject() {
+            try {
+                addResult('正在获取项目信息...');
+                
+                const response = await fetch(`${API_BASE_URL}/projects/${PROJECT_ID}`);
+                
+                addResult(`响应状态: ${response.status} ${response.statusText}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const project = await response.json();
+                
+                addResult(`✅ 成功获取项目信息！`);
+                addResult(`
+                    <strong>项目信息</strong><br>
+                    标题: ${project.title}<br>
+                    描述: ${project.description}<br>
+                    状态: ${project.status}<br>
+                    章节数量: ${project.stats.chapters_count}<br>
+                    进度: ${project.stats.progress_percentage}%
+                `);
+                
+            } catch (error) {
+                addResult(`❌ 获取项目信息失败: ${error.message}`, true);
+                console.error('获取项目信息失败:', error);
+            }
+        }
+
+        // 页面加载时自动测试
+        window.onload = function() {
+            addResult('页面加载完成，可以开始测试');
+        };
+    </script>
+</body>
+</html>

@@ -79,8 +79,8 @@ class ProjectService:
             "title": project.title,
             "description": project.description,
             "status": project.status,
-            "created_at": project.created_at.isoformat() if project.created_at else None,
-            "updated_at": project.updated_at.isoformat() if project.updated_at else None,
+            "created_at": project.created_at if isinstance(project.created_at, str) else (project.created_at.isoformat() if project.created_at else None),
+            "updated_at": project.updated_at if isinstance(project.updated_at, str) else (project.updated_at.isoformat() if project.updated_at else None),
             "stats": {
                 "concepts_count": len(concepts),
                 "world_settings_count": len(world_settings),

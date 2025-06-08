@@ -116,13 +116,16 @@ tmp/
 temp/
 
 # Logs
-logs
+logs/
 *.log
+backend.log
+frontend.log
 
-# Database files (if you don't want to include them)
-# *.db
-# *.sqlite
-# *.sqlite3
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+novel_generator.db
 
 # Local configuration files
 config.local.json

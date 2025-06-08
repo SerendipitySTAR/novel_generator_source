@@ -6,12 +6,12 @@ from app.agents.base_agent import BaseAgent
 from app.config import settings
 
 class ContentIntegrityAgent(BaseAgent):
-    """内容审核智能体"""
-    
+    """内容审核智能体 - 增强版本，支持连贯性检查和质量控制"""
+
     async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         运行内容审核智能体
-        
+
         Args:
             input_data: 输入数据，包含：
                 - chapter_content: 生成的章节文本
@@ -19,20 +19,122 @@ class ContentIntegrityAgent(BaseAgent):
                 - character_profiles: 人物设定
                 - kb_snapshot: 知识库快照
                 - writing_style: 预设风格
-            
+                - previous_chapters: 前面章节内容（用于连贯性检查）
+                - world_setting: 世界观设定（用于一致性检查）
+                - mode: 检查模式 'full'(完整检查) 或 'coherence'(连贯性检查)
+
         Returns:
             Dict[str, Any]: 输出数据，包含：
                 - total_score: 总评分(0-100)
                 - dimension_scores: 各维度评分
                 - audit_report: 审核报告
+                - coherence_issues: 连贯性问题列表
+                - quality_threshold_passed: 是否通过质量阈值
+                - improvement_suggestions: 改进建议
         """
         chapter_content = input_data.get("chapter_content", "")
         chapter_outline = input_data.get("chapter_outline", {})
         character_profiles = input_data.get("character_profiles", [])
         kb_snapshot = input_data.get("kb_snapshot", {})
         writing_style = input_data.get("writing_style", "")
-        
-        # 构建提示词
+        previous_chapters = input_data.get("previous_chapters", [])
+        world_setting = input_data.get("world_setting", {})
+        mode = input_data.get("mode", "full")
+
+        # 根据模式选择不同的检查方式
+        if mode == "coherence":
+            return await self._check_coherence_only(chapter_content, previous_chapters, character_profiles, world_setting)
+        else:
+            return await self._full_content_audit(chapter_content, chapter_outline, character_profiles, kb_snapshot, writing_style, previous_chapters, world_setting)
+
+    async def _check_coherence_only(self, chapter_content: str, previous_chapters: List[Dict], character_profiles: List[Dict], world_setting: Dict) -> Dict[str, Any]:
+        """
+        仅进行连贯性检查（用于章节生成前的预检查）
+        """
+        prompt_template = """你是一位专业的小说连贯性分析师。请重点检查以下章节内容的连贯性问题：
+
+## 检查维度：
+1. **角色行为一致性**：角色的行为、对话、性格是否与之前章节保持一致
+2. **情节逻辑连贯性**：情节发展是否符合逻辑，与前面章节是否有矛盾
+3. **世界观一致性**：是否违反了已建立的世界观设定和规则
+4. **时间线连贯性**：时间顺序和事件发展是否合理
+
+## 前面章节摘要：
+{previous_summary}
+
+## 人物设定：
+{character_info}
+
+## 世界观设定：
+{world_setting_info}
+
+## 当前章节内容：
+{chapter_content}
+
+请按照以下JSON格式输出连贯性检查结果：
+
+{{
+  "coherence_score": 分数(0-100),
+  "coherence_issues": [
+    {{
+      "type": "角色行为一致性/情节逻辑连贯性/世界观一致性/时间线连贯性",
+      "description": "具体问题描述",
+      "severity": "high/medium/low",
+      "suggestion": "修改建议"
+    }}
+  ],
+  "overall_assessment": "整体连贯性评估",
+  "pass_threshold": true/false
+}}
+"""
+
+        # 构建前面章节摘要
+        previous_summary = self._build_previous_summary(previous_chapters)
+        character_info = self._character_profiles_to_text(character_profiles)
+        world_setting_info = self._world_setting_to_text(world_setting)
+
+        prompt = await self._generate_prompt(prompt_template, {
+            "previous_summary": previous_summary,
+            "character_info": character_info,
+            "world_setting_info": world_setting_info,
+            "chapter_content": chapter_content
+        })
+
+        # 调用LLM进行连贯性检查
+        response = await self.llm.generate_text(
+            prompt=prompt,
+            temperature=0.3,  # 较低温度确保一致性
+            max_tokens=settings.AGENT_MAX_TOKENS,
+            top_p=settings.AGENT_TOP_P
+        )
+
+        try:
+            import json
+            result = json.loads(response.text)
+
+            # 添加质量阈值判断（连贯性分数需要达到70分以上）
+            quality_threshold_passed = result.get("coherence_score", 0) >= 70
+            result["quality_threshold_passed"] = quality_threshold_passed
+
+            return result
+        except json.JSONDecodeError:
+            # 如果解析失败，返回默认结果
+            return {
+                "coherence_score": 50,
+                "coherence_issues": [{"type": "解析错误", "description": "无法解析LLM响应", "severity": "high", "suggestion": "重新生成"}],
+                "overall_assessment": "连贯性检查失败",
+                "pass_threshold": False,
+                "quality_threshold_passed": False
+            }
+
+    async def _full_content_audit(self, chapter_content: str, chapter_outline: Dict, character_profiles: List[Dict], kb_snapshot: Dict, writing_style: str, previous_chapters: List[Dict], world_setting: Dict) -> Dict[str, Any]:
+        """
+        完整的内容审核（包含连贯性检查和质量评估）
+        """
+        # 先进行连贯性检查
+        coherence_result = await self._check_coherence_only(chapter_content, previous_chapters, character_profiles, world_setting)
+
+        # 构建完整审核提示词
         prompt_template = """你是一位细致的小说校对和内容分析师。请根据以下标准评估这段章节内容：
 
 1. 情节一致性（20分）：与前文、大纲、知识库设定是否矛盾？
@@ -287,4 +389,59 @@ class ContentIntegrityAgent(BaseAgent):
                 text += f"- {event.get('description', '')}\n"
             text += "\n"
         
+        return text
+
+    def _build_previous_summary(self, previous_chapters: List[Dict]) -> str:
+        """
+        构建前面章节的摘要
+        """
+        if not previous_chapters:
+            return "这是第一章，没有前面的章节。"
+
+        summary = "前面章节摘要：\n"
+        # 只取最近3章，避免内容过长
+        recent_chapters = previous_chapters[-3:] if len(previous_chapters) > 3 else previous_chapters
+
+        for i, chapter in enumerate(recent_chapters):
+            chapter_num = chapter.get("chapter_number", i + 1)
+            title = chapter.get("title", f"第{chapter_num}章")
+            content = chapter.get("content", "")
+
+            # 提取章节摘要（前200字）
+            chapter_summary = content[:200] + "..." if len(content) > 200 else content
+            summary += f"\n第{chapter_num}章 {title}：\n{chapter_summary}\n"
+
+        return summary
+
+    def _world_setting_to_text(self, world_setting: Dict) -> str:
+        """
+        将世界观设定转换为文本
+        """
+        if not world_setting:
+            return "暂无世界观设定。"
+
+        text = "世界观设定：\n"
+
+        # 基本设定
+        if "基本设定" in world_setting:
+            basic = world_setting["基本设定"]
+            text += f"世界名称: {basic.get('世界名称', '')}\n"
+            text += f"时代背景: {basic.get('时代背景', '')}\n"
+            text += f"科技水平: {basic.get('科技水平', '')}\n"
+            text += f"魔法体系: {basic.get('魔法体系', '')}\n"
+
+        # 地理环境
+        if "地理环境" in world_setting:
+            geo = world_setting["地理环境"]
+            if "主要地区" in geo:
+                text += "\n主要地区：\n"
+                for region in geo["主要地区"]:
+                    text += f"- {region.get('名称', '')}: {region.get('描述', '')}\n"
+
+        # 社会结构
+        if "社会结构" in world_setting:
+            social = world_setting["社会结构"]
+            text += f"\n政治制度: {social.get('政治制度', '')}\n"
+            text += f"社会阶层: {social.get('社会阶层', '')}\n"
+
         return text

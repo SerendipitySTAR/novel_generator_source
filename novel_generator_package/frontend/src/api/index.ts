@@ -6,11 +6,22 @@ const API_BASE_URL = 'http://localhost:8002/api';
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+    // 添加详细的调试信息
+    console.error('API请求失败:', {
+      url: response.url,
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
     try {
       const errorData = await response.json();
       errorMessage = errorData.detail || errorData.message || errorMessage;
+      console.error('错误详情:', errorData);
     } catch (e) {
       // 如果无法解析错误响应，使用默认错误消息
+      console.error('无法解析错误响应:', e);
     }
     throw new Error(errorMessage);
   }
@@ -308,14 +319,43 @@ export const charactersApi = {
 export const chaptersApi = {
   // 生成章节内容
   generateChapter: async (projectId: string, data: any) => {
-    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/chapters`, {
+    const url = `${API_BASE_URL}/projects/${projectId}/chapters`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+
+    // 添加详细的请求日志
+    console.log('发送章节生成请求:', {
+      url,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
+      projectId,
+      data
     });
-    return handleResponse(response);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+        signal: controller.signal,
+      });
+
+      console.log('章节生成响应:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      clearTimeout(timeoutId);
+      return handleResponse(response);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('章节生成超时，请稍后重试');
+      }
+      throw error;
+    }
   },
 
   // 生成剧情分支
@@ -332,9 +372,16 @@ export const chaptersApi = {
 
   // 获取章节列表
   getChapters: async (projectId: string) => {
+    console.log('获取章节列表，项目ID:', projectId);
     const response = await fetch(`${API_BASE_URL}/projects/${projectId}/chapters`);
+    console.log('章节列表响应状态:', response.status);
     const result = await handleResponse(response);
-    return result.chapters || result || [];
+    console.log('章节列表原始响应:', result);
+
+    // 新API直接返回章节数组，旧API返回 {chapters: [...]}
+    const chapters = Array.isArray(result) ? result : (result.chapters || []);
+    console.log('处理后的章节列表:', chapters);
+    return chapters;
   },
 
   // 获取章节详情
@@ -365,5 +412,30 @@ export const chaptersApi = {
       body: JSON.stringify(data),
     });
     return handleResponse(response);
+  },
+
+  // 生成章节内容（带质量检查）
+  generateChapterWithQualityCheck: async (projectId: string, data: any) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5分钟超时
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/projects/${projectId}/chapters/generate-with-quality-check`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return handleResponse(response);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('章节生成超时，请稍后重试');
+      }
+      throw error;
+    }
   },
 };

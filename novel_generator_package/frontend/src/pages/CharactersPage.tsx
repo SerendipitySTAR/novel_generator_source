@@ -192,7 +192,8 @@ const CharactersPage: React.FC = () => {
               <span
                 key={index}
                 className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
-                onClick={() => navigate(`/projects/${projectId}/characters/${character.id}`)}
+                onClick={() => navigate(`/projects/${projectId}/characters/${character.id}?characterIndex=${index}`)}
+                title={`点击查看 ${name} 的详细设定`}
               >
                 {name}
               </span>
@@ -205,7 +206,7 @@ const CharactersPage: React.FC = () => {
           {typeof content === 'string' ? (
             <p>{content.substring(0, 150)}...</p>
           ) : (
-            <p>包含 {names.length} 个人物的详细设定</p>
+            <p>包含 {names.length} 个人物的详细设定，点击人物名字查看详情</p>
           )}
         </div>
       </div>

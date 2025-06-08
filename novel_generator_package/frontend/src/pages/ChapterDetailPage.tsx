@@ -15,6 +15,7 @@ const ChapterDetailPage: React.FC = () => {
   const [generatingBranches, setGeneratingBranches] = useState<boolean>(false);
   const [plotBranches, setPlotBranches] = useState<any[]>([]);
   const [showBranches, setShowBranches] = useState<boolean>(false);
+  const [showQualityDetails, setShowQualityDetails] = useState<boolean>(false);
 
   useEffect(() => {
     if (projectId && chapterId) {
@@ -158,10 +159,111 @@ const ChapterDetailPage: React.FC = () => {
         </div>
 
         <div className="mb-4">
-          <p className="text-sm text-gray-500">
-            最后更新: {new Date(chapter.updated_at).toLocaleString()}
-          </p>
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-gray-500">
+              最后更新: {new Date(chapter.updated_at).toLocaleString()}
+            </p>
+            {(chapter.quality_score || chapter.coherence_score) && (
+              <button
+                className="text-sm text-blue-600 hover:text-blue-800"
+                onClick={() => setShowQualityDetails(!showQualityDetails)}
+              >
+                {showQualityDetails ? '隐藏' : '显示'}质量评分
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* 质量评分显示 */}
+        {showQualityDetails && (chapter.quality_score || chapter.coherence_score) && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-lg font-semibold mb-3">质量评估报告</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              {chapter.quality_score && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{chapter.quality_score}</div>
+                  <div className="text-sm text-gray-600">质量评分</div>
+                </div>
+              )}
+              {chapter.coherence_score && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{chapter.coherence_score}</div>
+                  <div className="text-sm text-gray-600">连贯性评分</div>
+                </div>
+              )}
+              {chapter.combined_score && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">{Math.round(chapter.combined_score)}</div>
+                  <div className="text-sm text-gray-600">综合评分</div>
+                </div>
+              )}
+            </div>
+
+            {/* 详细评估结果 */}
+            {chapter.quality_evaluation && (
+              <div className="mb-4">
+                <h4 className="font-medium mb-2">质量评估详情</h4>
+                {chapter.quality_evaluation.dimension_scores && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+                    {Object.entries(chapter.quality_evaluation.dimension_scores).map(([dimension, score]) => (
+                      <div key={dimension} className="flex justify-between text-sm">
+                        <span>{dimension}:</span>
+                        <span className="font-medium">{score}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {chapter.quality_evaluation.improvement_suggestions && (
+                  <div>
+                    <h5 className="text-sm font-medium mb-1">改进建议:</h5>
+                    <ul className="text-sm text-gray-700 space-y-1">
+                      {chapter.quality_evaluation.improvement_suggestions.map((suggestion: string, index: number) => (
+                        <li key={index} className="flex items-start">
+                          <span className="text-blue-500 mr-2">•</span>
+                          <span>{suggestion}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 连贯性评估结果 */}
+            {chapter.coherence_evaluation && (
+              <div className="mb-4">
+                <h4 className="font-medium mb-2">连贯性评估详情</h4>
+                {chapter.coherence_evaluation.coherence_issues && chapter.coherence_evaluation.coherence_issues.length > 0 && (
+                  <div>
+                    <h5 className="text-sm font-medium mb-1">发现的问题:</h5>
+                    <div className="space-y-2">
+                      {chapter.coherence_evaluation.coherence_issues.map((issue: any, index: number) => (
+                        <div key={index} className="text-sm p-2 bg-yellow-50 border-l-4 border-yellow-400">
+                          <div className="font-medium text-yellow-800">{issue.type}</div>
+                          <div className="text-yellow-700">{issue.description}</div>
+                          {issue.suggestion && (
+                            <div className="text-yellow-600 mt-1">建议: {issue.suggestion}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 生成尝试记录 */}
+            {chapter.generation_attempts && chapter.generation_attempts.length > 1 && (
+              <div>
+                <h4 className="font-medium mb-2">生成历史</h4>
+                <div className="text-sm text-gray-600">
+                  共进行了 {chapter.generation_attempts.length} 次生成尝试，选择了最佳结果。
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {editMode ? (
           <textarea

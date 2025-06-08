@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DEBUG=false
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/novel_generator
+      - OPENAI_API_BASE=http://llm:8321/v1
+      - SECRET_KEY=your-production-secret-key-change-this
+      - LOG_LEVEL=INFO
+      - ENABLE_JSON_LOGS=true
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - novel-generator
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8002/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - novel-generator
+
+  # PostgreSQL数据库
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=novel_generator
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - novel-generator
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - novel-generator
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    networks:
+      - novel-generator
+
+  # 本地LLM服务（可选）
+  llm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8321:8321"
+    environment:
+      - MODEL_NAME=your-model-name
+    volumes:
+      - ./models:/models
+    command: >
+      --model /models/your-model
+      --served-model-name gpt-4o-2024-08-06
+      --host 0.0.0.0
+      --port 8321
+    restart: unless-stopped
+    networks:
+      - novel-generator
+    # 如果有GPU，取消注释以下行
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  novel-generator:
+    driver: bridge

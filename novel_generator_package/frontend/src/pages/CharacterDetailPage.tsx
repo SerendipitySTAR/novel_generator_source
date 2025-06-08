@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { charactersApi } from '../api';
 
 const CharacterDetailPage: React.FC = () => {
   const { projectId, characterId } = useParams<{ projectId: string; characterId: string }>();
   const navigate = useNavigate();
-  
-  const [character, setCharacter] = useState<any>(null);
+  const [searchParams] = useSearchParams();
+
+  const [characterSet, setCharacterSet] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [editMode, setEditMode] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>('');
+  const [selectedCharacterIndex, setSelectedCharacterIndex] = useState<number>(0);
+  const [charactersList, setCharactersList] = useState<any[]>([]);
 
   useEffect(() => {
     if (projectId && characterId) {
@@ -18,32 +21,72 @@ const CharacterDetailPage: React.FC = () => {
     }
   }, [projectId, characterId]);
 
+  useEffect(() => {
+    // 从URL参数获取要显示的人物索引
+    const characterIndex = searchParams.get('characterIndex');
+    if (characterIndex !== null) {
+      setSelectedCharacterIndex(parseInt(characterIndex, 10));
+    }
+  }, [searchParams]);
+
   const fetchCharacter = async () => {
     try {
       setLoading(true);
       const charactersData = await charactersApi.getCharacters(projectId!);
       const characterData = charactersData.find((char: any) => char.id === characterId);
-      
+
       if (!characterData) {
-        toast.error('人物不存在');
+        toast.error('人物设定集不存在');
         navigate(`/projects/${projectId}/characters`);
         return;
       }
-      
-      setCharacter(characterData);
-      
-      // 将内容转换为可编辑的字符串格式
-      const contentStr = typeof characterData.content === 'string'
-        ? characterData.content
-        : JSON.stringify(characterData.content, null, 2);
-      setEditedContent(contentStr);
-      
+
+      setCharacterSet(characterData);
+
+      // 解析人物列表
+      const characters = extractCharactersList(characterData.content);
+      setCharactersList(characters);
+
+      // 设置初始编辑内容
+      if (characters.length > selectedCharacterIndex) {
+        const selectedChar = characters[selectedCharacterIndex];
+        setEditedContent(JSON.stringify(selectedChar, null, 2));
+      }
+
       setLoading(false);
     } catch (error) {
       console.error('获取人物详情失败:', error);
       toast.error('获取人物详情失败');
       setLoading(false);
     }
+  };
+
+  // 从人物设定集中提取人物列表
+  const extractCharactersList = (content: any): any[] => {
+    if (!content) return [];
+
+    // 如果content有characters数组
+    if (content.characters && Array.isArray(content.characters)) {
+      return content.characters;
+    }
+
+    // 如果content有人物设定字段（中文）
+    if (content.人物设定 && Array.isArray(content.人物设定)) {
+      return content.人物设定;
+    }
+
+    // 如果content是字符串，尝试解析
+    if (typeof content === 'string') {
+      try {
+        const parsed = JSON.parse(content);
+        return extractCharactersList(parsed);
+      } catch {
+        return [{ name: '未命名角色', content: content }];
+      }
+    }
+
+    // 如果没有找到结构化的人物数据，返回整个content作为单个人物
+    return [content];
   };
 
   const handleSaveEdit = async () => {
@@ -56,11 +99,26 @@ const CharacterDetailPage: React.FC = () => {
         parsedContent = editedContent;
       }
 
+      // 更新人物列表中的对应人物
+      const updatedCharacters = [...charactersList];
+      updatedCharacters[selectedCharacterIndex] = parsedContent;
+
+      // 重新构建人物设定集内容
+      let updatedContent = { ...characterSet.content };
+      if (updatedContent.characters) {
+        updatedContent.characters = updatedCharacters;
+      } else if (updatedContent.人物设定) {
+        updatedContent.人物设定 = updatedCharacters;
+      } else {
+        updatedContent = { characters: updatedCharacters };
+      }
+
       await charactersApi.updateCharacter(projectId!, characterId!, {
-        content: parsedContent
+        content: updatedContent
       });
 
-      setCharacter({ ...character, content: parsedContent });
+      setCharacterSet({ ...characterSet, content: updatedContent });
+      setCharactersList(updatedCharacters);
       setEditMode(false);
       toast.success('人物设定保存成功');
     } catch (error) {
@@ -71,173 +129,194 @@ const CharacterDetailPage: React.FC = () => {
 
   const handleCancelEdit = () => {
     // 重置编辑内容
-    const contentStr = typeof character.content === 'string'
-      ? character.content
-      : JSON.stringify(character.content, null, 2);
-    setEditedContent(contentStr);
+    if (charactersList.length > selectedCharacterIndex) {
+      const selectedChar = charactersList[selectedCharacterIndex];
+      setEditedContent(JSON.stringify(selectedChar, null, 2));
+    }
     setEditMode(false);
   };
 
-  const getCharacterName = (character: any) => {
-    const content = character.content;
-    if (!content) return '未命名角色';
+  const getCharacterName = (character: any, index?: number) => {
+    if (!character) return `角色${(index || 0) + 1}`;
 
-    // 如果content是字符串，尝试从中提取姓名
-    if (typeof content === 'string') {
-      const nameMatch = content.match(/(?:姓名|名字|Name)[：:]\s*([^\s,，。\n]+)/);
+    // 直接的name字段
+    if (character.name) return character.name;
+
+    // 中文结构化数据
+    if (character.基本信息?.姓名) return character.基本信息.姓名;
+
+    // 英文结构化数据
+    if (character.basic_info?.姓名) return character.basic_info.姓名;
+    if (character.basic_info?.name) return character.basic_info.name;
+
+    // 如果basic_info是字符串，尝试从中提取姓名
+    if (typeof character.basic_info === 'string') {
+      const nameMatch = character.basic_info.match(/(?:姓名|名字)[：:]\s*([^\s,，。]+)/);
       if (nameMatch) return nameMatch[1];
-      return '未命名角色';
     }
 
-    // 如果content有characters数组
-    if (content.characters && Array.isArray(content.characters) && content.characters.length > 0) {
-      const firstChar = content.characters[0];
-      if (firstChar.name) return firstChar.name;
-      if (firstChar.基本信息?.姓名) return firstChar.基本信息.姓名;
-      if (firstChar.basic_info?.姓名) return firstChar.basic_info.姓名;
-      if (firstChar.basic_info?.name) return firstChar.basic_info.name;
+    // 如果是字符串，尝试从中提取
+    if (typeof character === 'string') {
+      const nameMatch = character.match(/(?:姓名|名字|Name)[：:]\s*([^\s,，。\n]+)/);
+      if (nameMatch) return nameMatch[1];
     }
 
-    // 如果content有人物设定字段
-    if (content.人物设定 && Array.isArray(content.人物设定) && content.人物设定.length > 0) {
-      const firstChar = content.人物设定[0];
-      if (firstChar.基本信息?.姓名) return firstChar.基本信息.姓名;
-      if (firstChar.name) return firstChar.name;
-    }
-
-    return '未命名角色';
+    return `角色${(index || 0) + 1}`;
   };
 
-  const renderCharacterContent = (character: any) => {
-    const content = character.content;
-    if (!content) return <p className="text-gray-500">暂无内容</p>;
+  const renderSingleCharacterContent = (character: any) => {
+    if (!character) return <p className="text-gray-500">暂无内容</p>;
 
-    // 如果content是字符串，直接显示
-    if (typeof content === 'string') {
+    // 如果character是字符串，直接显示
+    if (typeof character === 'string') {
       return (
         <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-          {content}
+          {character}
         </div>
       );
     }
 
-    // 如果content有characters数组，按结构化方式显示
-    if (content.characters && Array.isArray(content.characters)) {
-      return (
-        <div className="space-y-8">
-          {content.characters.map((char: any, index: number) => (
-            <div key={index} className="p-4 bg-gray-50 rounded-lg">
-              <h5 className="font-medium text-lg mb-3 text-blue-700">
-                {char.name || char.基本信息?.姓名 || `角色${index + 1}`}
-              </h5>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {char.basic_info && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">基本信息:</p>
-                    <p className="text-gray-600">{char.basic_info}</p>
-                  </div>
-                )}
-                {char.background && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">背景故事:</p>
-                    <p className="text-gray-600">{char.background}</p>
-                  </div>
-                )}
-                {char.personality && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">性格特质:</p>
-                    <p className="text-gray-600">{char.personality}</p>
-                  </div>
-                )}
-                {char.abilities && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">能力技能:</p>
-                    <p className="text-gray-600">{char.abilities}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // 如果content有人物设定字段（中文）
-    if (content.人物设定 && Array.isArray(content.人物设定)) {
-      return (
-        <div className="space-y-8">
-          {content.人物设定.map((char: any, index: number) => (
-            <div key={index} className="p-4 bg-gray-50 rounded-lg">
-              <h5 className="font-medium text-lg mb-3 text-blue-700">
-                {char.基本信息?.姓名 || char.name || `角色${index + 1}`}
-              </h5>
-              <div className="space-y-3">
-                {char.基本信息 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">基本信息:</p>
-                    <div className="text-gray-600">
-                      {typeof char.基本信息 === 'object' ? (
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(char.基本信息).map(([key, value]: [string, any]) => (
-                            <div key={key}>
-                              <span className="font-medium">{key}:</span> {Array.isArray(value) ? value.join(', ') : value}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p>{char.基本信息}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {char.背景故事 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">背景故事:</p>
-                    <p className="text-gray-600">{char.背景故事}</p>
-                  </div>
-                )}
-                {char.性格特质 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">性格特质:</p>
-                    <div className="text-gray-600">
-                      {typeof char.性格特质 === 'object' ? (
-                        <div className="space-y-1">
-                          {Object.entries(char.性格特质).map(([key, value]: [string, any]) => (
-                            <div key={key}>
-                              <span className="font-medium">{key}:</span> {Array.isArray(value) ? value.join(', ') : value}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p>{char.性格特质}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {char.角色弧光 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">角色弧光:</p>
-                    <p className="text-gray-600">{char.角色弧光}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {content.人物关系图谱 && (
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <h5 className="font-medium text-blue-800 mb-2">人物关系图谱</h5>
-              <p className="text-blue-700">{content.人物关系图谱}</p>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    // 其他格式的内容，尝试以JSON格式显示
     return (
-      <pre className="whitespace-pre-wrap text-gray-700 text-sm bg-gray-50 p-4 rounded-lg overflow-x-auto">
-        {JSON.stringify(content, null, 2)}
-      </pre>
+      <div className="space-y-6">
+        {/* 基本信息 */}
+        {character.基本信息 && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">基本信息</h4>
+            <div className="text-gray-600">
+              {typeof character.基本信息 === 'object' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(character.基本信息).map(([key, value]: [string, any]) => (
+                    <div key={key} className="flex">
+                      <span className="font-medium text-gray-700 w-20">{key}:</span>
+                      <span>{Array.isArray(value) ? value.join(', ') : String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>{character.基本信息}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 英文基本信息 */}
+        {character.basic_info && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">基本信息</h4>
+            <div className="text-gray-600">
+              {typeof character.basic_info === 'object' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(character.basic_info).map(([key, value]: [string, any]) => (
+                    <div key={key} className="flex">
+                      <span className="font-medium text-gray-700 w-20">{key}:</span>
+                      <span>{Array.isArray(value) ? value.join(', ') : String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>{character.basic_info}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 背景故事 */}
+        {character.背景故事 && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">背景故事</h4>
+            <p className="text-gray-600 leading-relaxed">{character.背景故事}</p>
+          </div>
+        )}
+
+        {/* 英文背景故事 */}
+        {character.background && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">背景故事</h4>
+            <p className="text-gray-600 leading-relaxed">{character.background}</p>
+          </div>
+        )}
+
+        {/* 性格特质 */}
+        {character.性格特质 && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">性格特质</h4>
+            <div className="text-gray-600">
+              {typeof character.性格特质 === 'object' ? (
+                <div className="space-y-2">
+                  {Object.entries(character.性格特质).map(([key, value]: [string, any]) => (
+                    <div key={key} className="flex">
+                      <span className="font-medium text-gray-700 w-24">{key}:</span>
+                      <span>{Array.isArray(value) ? value.join(', ') : String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>{character.性格特质}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 英文性格特质 */}
+        {character.personality && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">性格特质</h4>
+            <p className="text-gray-600 leading-relaxed">{character.personality}</p>
+          </div>
+        )}
+
+        {/* 角色弧光 */}
+        {character.角色弧光 && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">角色弧光</h4>
+            <p className="text-gray-600 leading-relaxed">{character.角色弧光}</p>
+          </div>
+        )}
+
+        {/* 英文角色弧光 */}
+        {character.arc && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">角色弧光</h4>
+            <p className="text-gray-600 leading-relaxed">{character.arc}</p>
+          </div>
+        )}
+
+        {/* 能力技能 */}
+        {character.abilities && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">能力技能</h4>
+            <p className="text-gray-600 leading-relaxed">{character.abilities}</p>
+          </div>
+        )}
+
+        {/* 人际关系 */}
+        {character.relationships && (
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-800 mb-3">人际关系</h4>
+            <p className="text-gray-600 leading-relaxed">{character.relationships}</p>
+          </div>
+        )}
+
+        {/* 其他字段 */}
+        {Object.entries(character).map(([key, value]: [string, any]) => {
+          // 跳过已经显示的字段
+          const displayedFields = ['基本信息', 'basic_info', '背景故事', 'background', '性格特质', 'personality', '角色弧光', 'arc', 'abilities', 'relationships', 'name'];
+          if (displayedFields.includes(key) || !value) return null;
+
+          return (
+            <div key={key} className="p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-medium text-gray-800 mb-3">{key}</h4>
+              <div className="text-gray-600 leading-relaxed">
+                {typeof value === 'object' ? (
+                  <pre className="whitespace-pre-wrap text-sm">{JSON.stringify(value, null, 2)}</pre>
+                ) : (
+                  <p>{String(value)}</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     );
   };
 
@@ -252,11 +331,11 @@ const CharacterDetailPage: React.FC = () => {
     );
   }
 
-  if (!character) {
+  if (!characterSet || charactersList.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">人物不存在</p>
+          <p className="text-gray-600">人物设定集不存在或为空</p>
           <button
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={() => navigate(`/projects/${projectId}/characters`)}
@@ -267,6 +346,9 @@ const CharacterDetailPage: React.FC = () => {
       </div>
     );
   }
+
+  const currentCharacter = charactersList[selectedCharacterIndex] || charactersList[0];
+  const characterName = getCharacterName(currentCharacter, selectedCharacterIndex);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -281,10 +363,10 @@ const CharacterDetailPage: React.FC = () => {
               ← 返回人物列表
             </button>
             <h1 className="text-2xl font-bold text-gray-900">
-              {getCharacterName(character)}
+              {characterName}
             </h1>
           </div>
-          
+
           <div className="flex space-x-2">
             {editMode ? (
               <>
@@ -312,11 +394,38 @@ const CharacterDetailPage: React.FC = () => {
           </div>
         </div>
 
+        {/* 人物选择器 */}
+        {charactersList.length > 1 && (
+          <div className="bg-white p-4 rounded-lg shadow-md mb-6">
+            <h3 className="text-lg font-semibold mb-3">选择人物</h3>
+            <div className="flex flex-wrap gap-2">
+              {charactersList.map((char, index) => (
+                <button
+                  key={index}
+                  className={`px-3 py-2 rounded-lg transition-colors ${
+                    index === selectedCharacterIndex
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  onClick={() => {
+                    setSelectedCharacterIndex(index);
+                    if (!editMode) {
+                      setEditedContent(JSON.stringify(char, null, 2));
+                    }
+                  }}
+                >
+                  {getCharacterName(char, index)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 人物详情内容 */}
         <div className="bg-white p-6 rounded-lg shadow-md">
           {editMode ? (
             <div>
-              <h3 className="text-lg font-semibold mb-4">编辑人物设定</h3>
+              <h3 className="text-lg font-semibold mb-4">编辑人物设定 - {characterName}</h3>
               <p className="text-gray-600 mb-4">
                 您可以直接编辑人物设定内容。支持纯文本或JSON格式。
               </p>
@@ -329,8 +438,8 @@ const CharacterDetailPage: React.FC = () => {
             </div>
           ) : (
             <div>
-              <h3 className="text-lg font-semibold mb-4">人物设定详情</h3>
-              {renderCharacterContent(character)}
+              <h3 className="text-lg font-semibold mb-4">{characterName} - 详细设定</h3>
+              {renderSingleCharacterContent(currentCharacter)}
             </div>
           )}
         </div>

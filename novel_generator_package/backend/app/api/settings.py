@@ -31,19 +31,19 @@ async def update_token_config(config: Dict[str, Any] = Body(...)):
     """
     更新Token配置
     """
-    # 验证配置值
+    # 验证配置值 - 增加token限制以支持更大的值
     valid_keys = {
-        "concept_max_tokens": (1000, 20000),
-        "concept_expand_max_tokens": (2000, 20000),
-        "world_setting_max_tokens": (2000, 20000),
-        "plot_outline_max_tokens": (3000, 30000),
-        "character_max_tokens": (2000, 20000),
-        "chapter_max_tokens": (2000, 20000),
-        "chapter_polish_max_tokens": (2000, 20000),
-        "plot_branches_max_tokens": (1000, 10000),
+        "concept_max_tokens": (1000, 50000),
+        "concept_expand_max_tokens": (2000, 50000),
+        "world_setting_max_tokens": (2000, 50000),
+        "plot_outline_max_tokens": (3000, 100000),
+        "character_max_tokens": (2000, 50000),
+        "chapter_max_tokens": (2000, 50000),
+        "chapter_polish_max_tokens": (2000, 50000),
+        "plot_branches_max_tokens": (1000, 30000),
         "agent_temperature": (0.1, 2.0),
         "agent_top_p": (0.1, 1.0),
-        "default_chapter_length": (1000, 10000)
+        "default_chapter_length": (1000, 20000)
     }
     
     updated_config = {}

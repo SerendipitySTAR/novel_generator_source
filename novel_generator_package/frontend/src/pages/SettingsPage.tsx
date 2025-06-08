@@ -350,12 +350,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="1000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.concept_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, concept_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 1,000 - 50,000</p>
           </div>
 
           <div>
@@ -365,12 +366,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="2000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.concept_expand_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, concept_expand_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 2,000 - 50,000</p>
           </div>
 
           <div>
@@ -380,12 +382,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="2000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.world_setting_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, world_setting_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 2,000 - 50,000</p>
           </div>
 
           <div>
@@ -395,12 +398,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="3000"
-              max="30000"
+              max="100000"
               step="1000"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.plot_outline_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, plot_outline_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 3,000 - 100,000</p>
           </div>
 
           <div>
@@ -410,12 +414,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="2000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.character_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, character_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 2,000 - 50,000</p>
           </div>
 
           <div>
@@ -425,12 +430,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="2000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.chapter_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, chapter_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 2,000 - 50,000</p>
           </div>
 
           <div>
@@ -440,12 +446,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="2000"
-              max="20000"
+              max="50000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.chapter_polish_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, chapter_polish_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 2,000 - 50,000</p>
           </div>
 
           <div>
@@ -455,12 +462,13 @@ const SettingsPage: React.FC = () => {
             <input
               type="number"
               min="1000"
-              max="10000"
+              max="30000"
               step="500"
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
               value={tokenConfig.plot_branches_max_tokens}
               onChange={(e) => setTokenConfig({ ...tokenConfig, plot_branches_max_tokens: parseInt(e.target.value) })}
             />
+            <p className="text-xs text-gray-500 mt-1">范围: 1,000 - 30,000</p>
           </div>
         </div>
       </div>

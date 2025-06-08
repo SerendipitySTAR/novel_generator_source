@@ -6,45 +6,84 @@ from app.agents.base_agent import BaseAgent
 from app.config import settings
 
 class QualityGuardianAgent(BaseAgent):
-    """质量审核智能体"""
-    
+    """质量审核智能体 - 增强版本，支持量化质量指标和多轮审核"""
+
+    # 质量阈值配置
+    QUALITY_THRESHOLDS = {
+        "concept": 75,      # 概述质量阈值
+        "world_setting": 80, # 世界观质量阈值
+        "plot_outline": 85,  # 大纲质量阈值
+        "character_profiles": 80, # 人物设定质量阈值
+        "chapter": 75       # 章节质量阈值
+    }
+
     async def run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         运行质量审核智能体
-        
+
         Args:
             input_data: 输入数据，包含：
-                - content_type: 内容类型，可以是"concept"(概述)、"world_setting"(世界观)、"plot_outline"(大纲)、"character_profiles"(人物设定)
+                - content_type: 内容类型，可以是"concept"(概述)、"world_setting"(世界观)、"plot_outline"(大纲)、"character_profiles"(人物设定)、"chapter"(章节)
                 - content: 需要审核的内容
-            
+                - context: 上下文信息（可选）
+                - retry_count: 重试次数（用于多轮审核）
+
         Returns:
             Dict[str, Any]: 输出数据，包含：
                 - total_score: 总评分(0-100)
                 - dimension_scores: 各维度评分
                 - evaluation_reasons: 评分理由
                 - improvement_suggestions: 改进建议
+                - quality_threshold_passed: 是否通过质量阈值
+                - detailed_metrics: 详细量化指标
+                - retry_recommended: 是否建议重试
         """
         content_type = input_data.get("content_type", "")
         content = input_data.get("content", {})
-        
+        context = input_data.get("context", {})
+        retry_count = input_data.get("retry_count", 0)
+
+        # 根据内容类型进行评估
         if content_type == "concept":
-            return await self._evaluate_narrative_concept(content)
+            result = await self._evaluate_narrative_concept(content, context)
         elif content_type == "world_setting":
-            return await self._evaluate_world_setting(content)
+            result = await self._evaluate_world_setting(content, context)
         elif content_type == "plot_outline":
-            return await self._evaluate_plot_outline(content)
+            result = await self._evaluate_plot_outline(content, context)
         elif content_type == "character_profiles":
-            return await self._evaluate_character_profiles(content)
+            result = await self._evaluate_character_profiles(content, context)
+        elif content_type == "chapter":
+            result = await self._evaluate_chapter_content(content, context)
         else:
             raise ValueError(f"不支持的内容类型: {content_type}")
+
+        # 添加质量阈值判断
+        threshold = self.QUALITY_THRESHOLDS.get(content_type, 75)
+        total_score = result.get("total_score", 0)
+        quality_threshold_passed = total_score >= threshold
+
+        # 添加重试建议
+        retry_recommended = not quality_threshold_passed and retry_count < 2
+
+        # 增强结果
+        result.update({
+            "quality_threshold_passed": quality_threshold_passed,
+            "retry_recommended": retry_recommended,
+            "threshold_score": threshold,
+            "retry_count": retry_count,
+            "detailed_metrics": self._calculate_detailed_metrics(result, content_type)
+        })
+
+        return result
     
-    async def _evaluate_narrative_concept(self, concept: str) -> Dict[str, Any]:
+    async def _evaluate_narrative_concept(self, concept: str, context: Dict = None) -> Dict[str, Any]:
         """
         评估小说概述
-        
+
         Args:
             concept: 小说概述
-            
+            context: 上下文信息（可选）
+
         Returns:
             Dict[str, Any]: 评估结果
         """
@@ -143,13 +182,14 @@ class QualityGuardianAgent(BaseAgent):
                 ]
             }
     
-    async def _evaluate_world_setting(self, world_setting: Dict[str, Any]) -> Dict[str, Any]:
+    async def _evaluate_world_setting(self, world_setting: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """
         评估世界观设定
-        
+
         Args:
             world_setting: 世界观设定
-            
+            context: 上下文信息（可选）
+
         Returns:
             Dict[str, Any]: 评估结果
         """
@@ -251,13 +291,14 @@ class QualityGuardianAgent(BaseAgent):
                 ]
             }
     
-    async def _evaluate_plot_outline(self, plot_outline: Dict[str, Any]) -> Dict[str, Any]:
+    async def _evaluate_plot_outline(self, plot_outline: Dict[str, Any], context: Dict = None) -> Dict[str, Any]:
         """
         评估大纲
-        
+
         Args:
             plot_outline: 大纲
-            
+            context: 上下文信息（可选）
+
         Returns:
             Dict[str, Any]: 评估结果
         """
@@ -359,13 +400,14 @@ class QualityGuardianAgent(BaseAgent):
                 ]
             }
     
-    async def _evaluate_character_profiles(self, character_profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _evaluate_character_profiles(self, character_profiles: List[Dict[str, Any]], context: Dict = None) -> Dict[str, Any]:
         """
         评估人物设定
-        
+
         Args:
             character_profiles: 人物设定
-            
+            context: 上下文信息（可选）
+
         Returns:
             Dict[str, Any]: 评估结果
         """
@@ -686,3 +728,191 @@ class QualityGuardianAgent(BaseAgent):
                 text += f"人物关系图谱: {profile_set['人物关系图谱']}\n\n"
         
         return text
+
+    async def _evaluate_chapter_content(self, chapter_content: str, context: Dict = None) -> Dict[str, Any]:
+        """
+        评估章节内容
+
+        Args:
+            chapter_content: 章节内容
+            context: 上下文信息（包含前面章节、人物设定、世界观等）
+
+        Returns:
+            Dict[str, Any]: 评估结果
+        """
+        # 构建提示词
+        prompt_template = """你是一位挑剔的文学评论家和资深编辑。请对以下章节内容进行全面评估。请从以下维度进行打分（每个维度20分，总分100）：
+
+1. 情节连贯性：章节内容是否与前面章节逻辑连贯，没有明显的情节漏洞
+2. 人物一致性：人物的行为、对话、性格是否与设定保持一致
+3. 文笔质量：语言表达是否流畅、生动，文字功底是否扎实
+4. 节奏把控：章节的叙事节奏是否合适，张弛有度
+5. 情感渲染：是否能够有效地传达情感，引起读者共鸣
+
+章节内容:
+{chapter_content}
+
+{context_info}
+
+请详细说明每个维度的评分理由，并给出至少3条具体的、有建设性的修改建议，帮助提升其质量。请按照以下JSON格式输出：
+
+{{
+  "dimension_scores": {{
+    "情节连贯性": 分数,
+    "人物一致性": 分数,
+    "文笔质量": 分数,
+    "节奏把控": 分数,
+    "情感渲染": 分数
+  }},
+  "total_score": 总分,
+  "evaluation_reasons": {{
+    "情节连贯性": "评分理由...",
+    "人物一致性": "评分理由...",
+    "文笔质量": "评分理由...",
+    "节奏把控": "评分理由...",
+    "情感渲染": "评分理由..."
+  }},
+  "improvement_suggestions": [
+    "具体修改建议1",
+    "具体修改建议2",
+    "具体修改建议3",
+    ...
+  ]
+}}
+"""
+
+        # 构建上下文信息
+        context_info = ""
+        if context:
+            if "previous_chapters" in context:
+                context_info += "前面章节摘要:\n"
+                for chapter in context["previous_chapters"][-2:]:  # 只取最近2章
+                    context_info += f"- {chapter.get('title', '')}: {chapter.get('content', '')[:100]}...\n"
+
+            if "character_profiles" in context:
+                context_info += "\n人物设定:\n"
+                context_info += self._character_profiles_to_text(context["character_profiles"])[:500] + "...\n"
+
+            if "world_setting" in context:
+                context_info += "\n世界观设定:\n"
+                context_info += self._world_setting_to_text(context["world_setting"])[:300] + "...\n"
+
+        prompt = await self._generate_prompt(prompt_template, {
+            "chapter_content": chapter_content,
+            "context_info": context_info
+        })
+
+        # 调用LLM评估章节
+        response = await self.llm.generate_text(
+            prompt=prompt,
+            temperature=0.3,
+            max_tokens=settings.AGENT_MAX_TOKENS,
+            top_p=settings.AGENT_TOP_P
+        )
+
+        # 解析结果
+        import json
+        import re
+
+        try:
+            # 使用正则表达式提取JSON部分
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                # 解析JSON
+                result = json.loads(json_str)
+                return result
+            else:
+                # 如果无法提取JSON，返回默认结果
+                return {
+                    "dimension_scores": {
+                        "情节连贯性": 0,
+                        "人物一致性": 0,
+                        "文笔质量": 0,
+                        "节奏把控": 0,
+                        "情感渲染": 0
+                    },
+                    "total_score": 0,
+                    "evaluation_reasons": {
+                        "error": "无法解析评估结果"
+                    },
+                    "improvement_suggestions": [
+                        "无法提供具体建议，请检查输入内容"
+                    ]
+                }
+        except Exception as e:
+            # 如果JSON解析失败，返回错误信息
+            return {
+                "dimension_scores": {
+                    "情节连贯性": 0,
+                    "人物一致性": 0,
+                    "文笔质量": 0,
+                    "节奏把控": 0,
+                    "情感渲染": 0
+                },
+                "total_score": 0,
+                "evaluation_reasons": {
+                    "error": f"解析评估结果时出错: {str(e)}"
+                },
+                "improvement_suggestions": [
+                    "无法提供具体建议，请检查输入内容"
+                ]
+            }
+
+    def _calculate_detailed_metrics(self, result: Dict, content_type: str) -> Dict[str, Any]:
+        """
+        计算详细的量化指标
+
+        Args:
+            result: 评估结果
+            content_type: 内容类型
+
+        Returns:
+            Dict[str, Any]: 详细指标
+        """
+        dimension_scores = result.get("dimension_scores", {})
+        total_score = result.get("total_score", 0)
+
+        # 计算各维度的权重分布
+        if dimension_scores:
+            max_score = max(dimension_scores.values()) if dimension_scores.values() else 0
+            min_score = min(dimension_scores.values()) if dimension_scores.values() else 0
+            avg_score = sum(dimension_scores.values()) / len(dimension_scores) if dimension_scores else 0
+
+            # 计算分数分布
+            score_distribution = {
+                "excellent": len([s for s in dimension_scores.values() if s >= 90]),
+                "good": len([s for s in dimension_scores.values() if 80 <= s < 90]),
+                "average": len([s for s in dimension_scores.values() if 70 <= s < 80]),
+                "poor": len([s for s in dimension_scores.values() if s < 70])
+            }
+
+            # 计算质量等级
+            if total_score >= 90:
+                quality_grade = "优秀"
+            elif total_score >= 80:
+                quality_grade = "良好"
+            elif total_score >= 70:
+                quality_grade = "合格"
+            else:
+                quality_grade = "需要改进"
+
+            return {
+                "max_dimension_score": max_score,
+                "min_dimension_score": min_score,
+                "avg_dimension_score": round(avg_score, 2),
+                "score_distribution": score_distribution,
+                "quality_grade": quality_grade,
+                "improvement_priority": min(dimension_scores, key=dimension_scores.get) if dimension_scores else "无",
+                "strength_area": max(dimension_scores, key=dimension_scores.get) if dimension_scores else "无"
+            }
+        else:
+            return {
+                "max_dimension_score": 0,
+                "min_dimension_score": 0,
+                "avg_dimension_score": 0,
+                "score_distribution": {"excellent": 0, "good": 0, "average": 0, "poor": 0},
+                "quality_grade": "评估失败",
+                "improvement_priority": "无",
+                "strength_area": "无"
+            }

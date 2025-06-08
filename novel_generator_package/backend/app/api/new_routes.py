@@ -78,6 +78,16 @@ class ChapterGenerateRequestV2(BaseModel):
     kb_context: list = []
     writing_style: str = "详细生动"
 
+class ChapterGenerateWithQualityCheckRequest(BaseModel):
+    chapter_outline: dict
+    world_setting: dict
+    character_profiles: list
+    previous_summary: str = ""
+    previous_chapters: list = []
+    kb_context: list = []
+    writing_style: str = "详细生动"
+    max_retries: int = 2
+
 # 响应模型
 class ProjectResponse(BaseModel):
     id: str
@@ -122,8 +132,8 @@ async def create_project(
         title=project.title,
         description=project.description,
         status=project.status,
-        created_at=project.created_at.isoformat(),
-        updated_at=project.updated_at.isoformat() if project.updated_at else project.created_at.isoformat()
+        created_at=project.created_at if isinstance(project.created_at, str) else project.created_at.isoformat(),
+        updated_at=project.updated_at if isinstance(project.updated_at, str) else (project.updated_at.isoformat() if project.updated_at else project.created_at)
     )
 
 @router.get("/projects", response_model=List[ProjectResponse])
@@ -140,8 +150,8 @@ async def get_projects(
             title=project.title,
             description=project.description,
             status=project.status,
-            created_at=project.created_at.isoformat(),
-            updated_at=project.updated_at.isoformat() if project.updated_at else project.created_at.isoformat()
+            created_at=project.created_at if isinstance(project.created_at, str) else project.created_at.isoformat(),
+            updated_at=project.updated_at if isinstance(project.updated_at, str) else (project.updated_at.isoformat() if project.updated_at else project.created_at)
         )
         for project in projects
     ]
@@ -780,30 +790,42 @@ async def get_chapters(
 ):
     """获取项目的章节列表"""
     try:
+        print(f"=== 获取章节列表请求 ===")
+        print(f"项目ID: {project_id}")
+
         # 验证项目是否存在
         from app.db.repositories import ProjectRepository, ChapterRepository
 
         project_repo = ProjectRepository(db)
         project = project_repo.get_by_id(project_id)
         if not project:
+            print(f"项目不存在: {project_id}")
             raise HTTPException(status_code=404, detail="项目不存在")
 
         chapter_repo = ChapterRepository(db)
         chapters = chapter_repo.get_by_project_id(project_id)
 
-        return {
-            "chapters": [
-                {
-                    "id": chapter.id,
-                    "chapter_number": chapter.chapter_number,
-                    "title": chapter.title,
-                    "content": chapter.content,
-                    "word_count": chapter.word_count,
-                    "writing_style": chapter.writing_style
-                }
-                for chapter in chapters
-            ]
-        }
+        print(f"从数据库获取到 {len(chapters)} 个章节")
+        for chapter in chapters:
+            print(f"章节: {chapter.id}, 章节号: {chapter.chapter_number}, 标题: {chapter.title}")
+
+        result = [
+            {
+                "id": chapter.id,
+                "chapter_number": chapter.chapter_number,
+                "title": chapter.title,
+                "content": chapter.content,
+                "word_count": chapter.word_count or len(chapter.content or ""),
+                "writing_style": chapter.writing_style,
+                "status": chapter.status or "draft",
+                "created_at": chapter.created_at if isinstance(chapter.created_at, str) else (chapter.created_at.isoformat() if chapter.created_at else None),
+                "updated_at": chapter.updated_at if isinstance(chapter.updated_at, str) else (chapter.updated_at.isoformat() if chapter.updated_at else None)
+            }
+            for chapter in chapters
+        ]
+
+        print(f"返回章节数据: {len(result)} 个章节")
+        return result
     except HTTPException:
         # 重新抛出HTTP异常
         raise
@@ -821,8 +843,13 @@ async def generate_chapter(
 ):
     """生成章节内容"""
     try:
-        print(f"开始生成章节，项目ID: {project_id}")
+        print(f"=== 章节生成请求开始 ===")
+        print(f"项目ID: {project_id}")
+        print(f"请求数据: {request.model_dump()}")
         print(f"章节大纲: {request.chapter_outline}")
+        print(f"世界设定: {request.world_setting}")
+        print(f"人物设定: {request.character_profiles}")
+        print(f"写作风格: {request.writing_style}")
 
         # 验证项目是否存在
         from app.db.repositories import ProjectRepository
@@ -884,16 +911,24 @@ async def generate_chapter(
             db.close()
 
         print(f"成功生成章节: {chapter.title}")
+        print(f"章节ID: {chapter.id}")
+        print(f"章节号: {chapter.chapter_number}")
+        print(f"内容长度: {len(chapter.content or '')}")
 
-        return {
+        response_data = {
             "id": chapter.id,
             "chapter_number": chapter.chapter_number,
             "title": chapter.title,
             "content": chapter.content,
-            "word_count": chapter.word_count,
+            "word_count": chapter.word_count or len(chapter.content or ""),
             "writing_style": chapter.writing_style,
-            "status": "draft"
+            "status": chapter.status or "draft",
+            "created_at": chapter.created_at if isinstance(chapter.created_at, str) else (chapter.created_at.isoformat() if chapter.created_at else None),
+            "updated_at": chapter.updated_at if isinstance(chapter.updated_at, str) else (chapter.updated_at.isoformat() if chapter.updated_at else None)
         }
+
+        print(f"返回响应数据: {response_data}")
+        return response_data
     except HTTPException:
         # 重新抛出HTTP异常
         raise
@@ -902,6 +937,161 @@ async def generate_chapter(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"章节生成失败 - 系统错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"生成章节时发生错误: {str(e)}")
+
+@router.post("/projects/{project_id}/chapters/generate-with-quality-check")
+async def generate_chapter_with_quality_check(
+    project_id: str,
+    request: ChapterGenerateWithQualityCheckRequest,
+    novel_service: NovelGenerationService = Depends(get_novel_service)
+):
+    """生成章节内容（带质量检查和智能重试）"""
+    try:
+        print(f"=== 带质量检查的章节生成请求开始 ===")
+        print(f"项目ID: {project_id}")
+        print(f"最大重试次数: {request.max_retries}")
+
+        # 验证项目是否存在
+        from app.db.repositories import ProjectRepository
+
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            project_repo = ProjectRepository(db)
+            project = project_repo.get_by_id(project_id)
+            if not project:
+                raise HTTPException(status_code=404, detail="项目不存在")
+        finally:
+            db.close()
+
+        # 使用智能体进行多轮生成和质量检查
+        from app.agents.chapter_chronicler import ChapterChroniclerAgent
+        from app.agents.quality_guardian import QualityGuardianAgent
+        from app.core.llm import OpenAILLM
+
+        llm = OpenAILLM()
+        chapter_agent = ChapterChroniclerAgent(llm=llm, project_id=project_id)
+        quality_agent = QualityGuardianAgent(llm=llm, project_id=project_id)
+
+        best_result = None
+        best_score = 0
+        generation_attempts = []
+
+        for attempt in range(request.max_retries + 1):
+            print(f"第 {attempt + 1} 次生成尝试")
+
+            # 生成章节内容
+            chapter_result = await chapter_agent.run({
+                "mode": "generate",
+                "chapter_outline": request.chapter_outline,
+                "world_setting": request.world_setting,
+                "character_profiles": request.character_profiles,
+                "previous_summary": request.previous_summary,
+                "kb_context": request.kb_context,
+                "writing_style": request.writing_style
+            })
+
+            chapter_content = chapter_result.get("chapter_content", "")
+            if not chapter_content:
+                print(f"第 {attempt + 1} 次生成失败：内容为空")
+                continue
+
+            # 质量评估
+            quality_input = {
+                "content_type": "chapter",
+                "content": chapter_content,
+                "context": {
+                    "chapter_outline": request.chapter_outline,
+                    "character_profiles": request.character_profiles,
+                    "previous_chapters": request.previous_chapters,
+                    "writing_style": request.writing_style
+                }
+            }
+            print(f"质量检查输入: content_type={quality_input.get('content_type')}, content长度={len(quality_input.get('content', ''))}")
+            quality_result = await quality_agent.run(quality_input)
+
+            quality_score = quality_result.get("total_score", 0)
+            print(f"第 {attempt + 1} 次生成质量评分: {quality_score}")
+
+            generation_attempts.append({
+                "attempt": attempt + 1,
+                "content": chapter_content,
+                "quality_score": quality_score,
+                "quality_details": quality_result
+            })
+
+            # 更新最佳结果
+            if quality_score > best_score:
+                best_score = quality_score
+                best_result = {
+                    "content": chapter_content,
+                    "quality_result": quality_result,
+                    "attempt": attempt + 1
+                }
+
+            # 如果质量足够好，提前结束
+            if quality_score >= 85:
+                print(f"质量评分达到 {quality_score}，提前结束生成")
+                break
+
+        if not best_result:
+            raise HTTPException(status_code=500, detail="所有生成尝试都失败了")
+
+        # 保存最佳章节到数据库
+        from app.db.repositories import ChapterRepository
+
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            chapter_repo = ChapterRepository(db)
+            chapter = chapter_repo.create(
+                project_id=project_id,
+                chapter_number=request.chapter_outline.get("number", 1),
+                title=request.chapter_outline.get("title", f"第{request.chapter_outline.get('number', 1)}章"),
+                content=best_result["content"],
+                outline=request.chapter_outline,
+                writing_style=request.writing_style,
+                word_count=len(best_result["content"]),
+                quality_score=best_score,
+                evaluation_result=best_result["quality_result"],
+                generation_metadata={
+                    "attempts": len(generation_attempts),
+                    "best_attempt": best_result["attempt"],
+                    "all_attempts": generation_attempts
+                }
+            )
+        finally:
+            db.close()
+
+        print(f"成功生成高质量章节: {chapter.title}，质量评分: {best_score}")
+        print(f"章节ID: {chapter.id}")
+        print(f"章节号: {chapter.chapter_number}")
+        print(f"内容长度: {len(chapter.content or '')}")
+
+        response_data = {
+            "id": chapter.id,
+            "chapter_number": chapter.chapter_number,
+            "title": chapter.title,
+            "content": chapter.content,
+            "word_count": chapter.word_count or len(chapter.content or ""),
+            "writing_style": chapter.writing_style,
+            "status": chapter.status or "draft",
+            "quality_score": best_score,
+            "evaluation_result": best_result["quality_result"],
+            "generation_attempts": len(generation_attempts),
+            "best_attempt": best_result["attempt"],
+            "created_at": chapter.created_at if isinstance(chapter.created_at, str) else (chapter.created_at.isoformat() if chapter.created_at else None),
+            "updated_at": chapter.updated_at if isinstance(chapter.updated_at, str) else (chapter.updated_at.isoformat() if chapter.updated_at else None)
+        }
+
+        print(f"返回响应数据（带质量检查）: {response_data}")
+        return response_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"带质量检查的章节生成失败: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"生成章节时发生错误: {str(e)}")

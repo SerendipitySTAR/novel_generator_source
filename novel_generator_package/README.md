@@ -23,20 +23,48 @@
 7. **剧情分支**：提供多个剧情发展方向选择
 8. **内容润色**：优化和提升已生成的内容质量
 
-## 快速开始
+## 🚀 快速开始
 
-### 环境要求
+### 一键启动（推荐）
+
+```bash
+# 给脚本添加执行权限（首次使用）
+chmod +x start.sh stop.sh status.sh
+
+# 一键启动所有服务
+./start.sh
+
+# 检查服务状态
+./status.sh
+
+# 停止所有服务
+./stop.sh
+```
+
+**启动脚本会自动：**
+- 检查并安装所有依赖
+- 创建Python虚拟环境
+- 下载嵌入模型
+- 初始化数据库
+- 启动前后端服务
+
+### 手动安装（可选）
+
+如果您希望手动安装，请参考以下步骤：
+
+#### 环境要求
 
 - Python 3.8+
 - Node.js 16+
-- OpenAI API密钥
+- OpenAI API密钥或本地LLM
 
-### 后端安装
+#### 后端安装
 
-1. 克隆项目仓库
+1. 创建虚拟环境
 ```bash
-git clone https://github.com/yourusername/novel-generator.git
-cd novel-generator
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# 或 venv\Scripts\activate  # Windows
 ```
 
 2. 安装后端依赖
@@ -47,19 +75,17 @@ pip install -r requirements.txt
 
 3. 配置环境变量
 ```bash
-# Linux/macOS
-export OPENAI_API_KEY=your_openai_api_key
-
-# Windows
-set OPENAI_API_KEY=your_openai_api_key
+# 复制配置文件
+cp .env.example .env
+# 编辑 .env 文件，配置您的LLM设置
 ```
 
 4. 启动后端服务
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+python run.py
 ```
 
-### 前端安装
+#### 前端安装
 
 1. 安装前端依赖
 ```bash
@@ -70,11 +96,6 @@ pnpm install
 2. 启动开发服务器
 ```bash
 pnpm dev
-```
-
-3. 构建生产版本
-```bash
-pnpm build
 ```
 
 ## 使用流程

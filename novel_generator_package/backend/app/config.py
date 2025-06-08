@@ -3,7 +3,7 @@
 """
 import os
 from pydantic_settings import BaseSettings
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # 应用基本配置
@@ -16,6 +16,18 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8002
+
+    # 日志配置
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FILE: Optional[str] = os.getenv("LOG_FILE", None)
+    ENABLE_JSON_LOGS: bool = os.getenv("ENABLE_JSON_LOGS", "false").lower() == "true"
+
+    # 安全配置
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    ENABLE_AUTHENTICATION: bool = os.getenv("ENABLE_AUTHENTICATION", "false").lower() == "true"
+    RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+    RATE_LIMIT_WINDOW: int = int(os.getenv("RATE_LIMIT_WINDOW", "3600"))
 
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/novel_generator")
@@ -69,7 +81,26 @@ class Settings(BaseSettings):
         "奇幻史诗",
         "自定义"
     ]
-    
+
+    # Redis配置（可选）
+    REDIS_URL: Optional[str] = os.getenv("REDIS_URL", None)
+
+    # 文件存储配置
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "10485760"))  # 10MB
+
+    # 邮件配置（可选）
+    SMTP_HOST: Optional[str] = os.getenv("SMTP_HOST", None)
+    SMTP_PORT: Optional[int] = int(os.getenv("SMTP_PORT", "587")) if os.getenv("SMTP_PORT") else None
+    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None)
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None)
+    SMTP_TLS: bool = os.getenv("SMTP_TLS", "false").lower() == "true"
+
+    # 监控配置（可选）
+    SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN", None)
+    ENABLE_METRICS: bool = os.getenv("ENABLE_METRICS", "false").lower() == "true"
+    METRICS_PORT: int = int(os.getenv("METRICS_PORT", "9090"))
+
     class Config:
         env_file = ".env"
         case_sensitive = True

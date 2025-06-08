@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说生成器完整功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .loading {
+            color: #007bff;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 小说生成器完整功能测试</h1>
+        <p>这个页面将测试小说生成器的所有核心功能</p>
+    </div>
+
+    <div class="container">
+        <h2>📊 系统状态检查</h2>
+        <div class="test-section">
+            <button onclick="checkSystemHealth()">检查系统健康状态</button>
+            <div id="health-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📝 项目管理测试</h2>
+        <div class="test-section">
+            <button onclick="createTestProject()">创建测试项目</button>
+            <button onclick="listProjects()">获取项目列表</button>
+            <div id="project-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>💡 概述生成测试</h2>
+        <div class="test-section">
+            <button onclick="generateConcepts()" id="concept-btn">生成概述</button>
+            <button onclick="selectFirstConcept()" id="select-concept-btn" disabled>选择第一个概述</button>
+            <div id="concept-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>🌍 世界观设定测试</h2>
+        <div class="test-section">
+            <button onclick="generateWorldSettings()" id="world-btn" disabled>生成世界观设定</button>
+            <button onclick="selectFirstWorldSetting()" id="select-world-btn" disabled>选择第一个世界观</button>
+            <div id="world-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📖 大纲生成测试</h2>
+        <div class="test-section">
+            <button onclick="generatePlotOutlines()" id="plot-btn" disabled>生成大纲</button>
+            <button onclick="selectFirstPlotOutline()" id="select-plot-btn" disabled>选择第一个大纲</button>
+            <div id="plot-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>👥 人物设定测试</h2>
+        <div class="test-section">
+            <button onclick="generateCharacters()" id="character-btn" disabled>生成人物设定</button>
+            <button onclick="selectFirstCharacter()" id="select-character-btn" disabled>选择第一个人物设定</button>
+            <div id="character-result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📚 章节生成测试</h2>
+        <div class="test-section">
+            <button onclick="generateChapter()" id="chapter-btn" disabled>生成第一章</button>
+            <div id="chapter-result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8002/api';
+        let currentProjectId = null;
+        let currentConceptId = null;
+        let currentWorldSettingId = null;
+        let currentPlotOutlineId = null;
+        let currentCharacterId = null;
+
+        function showResult(elementId, content, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = content;
+        }
+
+        function showLoading(elementId) {
+            const element = document.getElementById(elementId);
+            element.className = 'result loading';
+            element.textContent = '正在处理中...';
+        }
+
+        async function checkSystemHealth() {
+            showLoading('health-result');
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('health-result', JSON.stringify(data, null, 2), 'success');
+            } catch (error) {
+                showResult('health-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function createTestProject() {
+            showLoading('project-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: '前端完整测试项目',
+                        description: '用于测试前端所有功能的项目'
+                    })
+                });
+                const data = await response.json();
+                currentProjectId = data.id;
+                showResult('project-result', `项目创建成功!\nID: ${data.id}\n标题: ${data.title}`, 'success');
+                
+                // 启用概述生成按钮
+                document.getElementById('concept-btn').disabled = false;
+            } catch (error) {
+                showResult('project-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function listProjects() {
+            showLoading('project-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects`);
+                const data = await response.json();
+                showResult('project-result', `项目列表:\n${JSON.stringify(data, null, 2)}`, 'info');
+            } catch (error) {
+                showResult('project-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function generateConcepts() {
+            if (!currentProjectId) {
+                showResult('concept-result', '请先创建项目', 'error');
+                return;
+            }
+            
+            showLoading('concept-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/concepts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_input: '一个关于AI觉醒的科幻故事',
+                        num_concepts: 2
+                    })
+                });
+                const data = await response.json();
+                showResult('concept-result', `概述生成成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                if (data.concepts && data.concepts.length > 0) {
+                    currentConceptId = data.concepts[0].id;
+                    document.getElementById('select-concept-btn').disabled = false;
+                }
+            } catch (error) {
+                showResult('concept-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function selectFirstConcept() {
+            if (!currentConceptId) {
+                showResult('concept-result', '没有可选择的概述', 'error');
+                return;
+            }
+            
+            showLoading('concept-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/concepts/${currentConceptId}/select`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResult('concept-result', `概述选择成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                // 启用世界观生成按钮
+                document.getElementById('world-btn').disabled = false;
+            } catch (error) {
+                showResult('concept-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function generateWorldSettings() {
+            showLoading('world-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/world-settings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        num_settings: 2
+                    })
+                });
+                const data = await response.json();
+                showResult('world-result', `世界观设定生成成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                if (data.world_settings && data.world_settings.length > 0) {
+                    currentWorldSettingId = data.world_settings[0].id;
+                    document.getElementById('select-world-btn').disabled = false;
+                }
+            } catch (error) {
+                showResult('world-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function selectFirstWorldSetting() {
+            if (!currentWorldSettingId) {
+                showResult('world-result', '没有可选择的世界观设定', 'error');
+                return;
+            }
+            
+            showLoading('world-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/world-settings/${currentWorldSettingId}/select`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResult('world-result', `世界观设定选择成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                // 启用大纲生成按钮
+                document.getElementById('plot-btn').disabled = false;
+            } catch (error) {
+                showResult('world-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function generatePlotOutlines() {
+            showLoading('plot-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/plot-outlines`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chapter_count: 5,
+                        conflict_elements: 'AI觉醒与人类恐惧的冲突'
+                    })
+                });
+                const data = await response.json();
+                showResult('plot-result', `大纲生成成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                if (data.plot_outlines && data.plot_outlines.length > 0) {
+                    currentPlotOutlineId = data.plot_outlines[0].id;
+                    document.getElementById('select-plot-btn').disabled = false;
+                }
+            } catch (error) {
+                showResult('plot-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function selectFirstPlotOutline() {
+            if (!currentPlotOutlineId) {
+                showResult('plot-result', '没有可选择的大纲', 'error');
+                return;
+            }
+            
+            showLoading('plot-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/plot-outlines/${currentPlotOutlineId}/select`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResult('plot-result', `大纲选择成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                // 启用人物生成按钮
+                document.getElementById('character-btn').disabled = false;
+            } catch (error) {
+                showResult('plot-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function generateCharacters() {
+            showLoading('character-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/characters`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        num_character_sets: 1
+                    })
+                });
+                const data = await response.json();
+                showResult('character-result', `人物设定生成成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                if (data.characters && data.characters.length > 0) {
+                    currentCharacterId = data.characters[0].id;
+                    document.getElementById('select-character-btn').disabled = false;
+                }
+            } catch (error) {
+                showResult('character-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function selectFirstCharacter() {
+            if (!currentCharacterId) {
+                showResult('character-result', '没有可选择的人物设定', 'error');
+                return;
+            }
+            
+            showLoading('character-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/characters/${currentCharacterId}/select`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResult('character-result', `人物设定选择成功!\n${JSON.stringify(data, null, 2)}`, 'success');
+                
+                // 启用章节生成按钮
+                document.getElementById('chapter-btn').disabled = false;
+            } catch (error) {
+                showResult('character-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        async function generateChapter() {
+            showLoading('chapter-result');
+            try {
+                const response = await fetch(`${API_BASE}/projects/${currentProjectId}/chapters`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chapter_outline: {
+                            number: 1,
+                            title: "第一章",
+                            word_count: 3000
+                        },
+                        world_setting: {
+                            description: "科幻世界",
+                            key_elements: ["AI", "觉醒", "冲突"]
+                        },
+                        character_profiles: [
+                            {
+                                name: "主角",
+                                role: "科学家",
+                                personality: "理想主义"
+                            }
+                        ],
+                        previous_summary: "",
+                        writing_style: "详细生动"
+                    })
+                });
+                const data = await response.json();
+                showResult('chapter-result', `章节生成成功!\n标题: ${data.title}\n内容长度: ${data.content.length} 字符`, 'success');
+            } catch (error) {
+                showResult('chapter-result', `错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 页面加载时检查系统状态
+        window.onload = function() {
+            checkSystemHealth();
+        };
+    </script>
+</body>
+</html>

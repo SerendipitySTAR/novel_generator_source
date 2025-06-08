@@ -1,22 +1,10 @@
 """
-API路由初始化文件
+API路由初始化文件 - 已禁用，使用 new_routes.py 代替
 """
-from fastapi import APIRouter
+# 注意：此文件已被禁用，以避免与 new_routes.py 的路由冲突
+# 所有API路由现在都在 new_routes.py 中定义
 
-router = APIRouter()
-
-# 导入各模块路由
-from app.api.projects import router as projects_router
-from app.api.concepts import router as concepts_router
-from app.api.world_settings import router as world_settings_router
-from app.api.plot_outlines import router as plot_outlines_router
-from app.api.characters import router as characters_router
-from app.api.chapters import router as chapters_router
-
-# 注册路由
-router.include_router(projects_router, prefix="/projects", tags=["projects"])
-router.include_router(concepts_router, prefix="/projects/{project_id}/concepts", tags=["concepts"])
-router.include_router(world_settings_router, prefix="/projects/{project_id}/world-settings", tags=["world_settings"])
-router.include_router(plot_outlines_router, prefix="/projects/{project_id}/plot-outlines", tags=["plot_outlines"])
-router.include_router(characters_router, prefix="/projects/{project_id}/characters", tags=["characters"])
-router.include_router(chapters_router, prefix="/projects/{project_id}/chapters", tags=["chapters"])
+# 如果需要重新启用此文件，请确保：
+# 1. 在 main.py 中注册此路由
+# 2. 删除或重命名 new_routes.py
+# 3. 确保没有路由冲突
