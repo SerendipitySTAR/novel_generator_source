@@ -9,6 +9,7 @@ from app.db.repositories import (
     ProjectRepository, ConceptRepository, WorldSettingRepository,
     PlotOutlineRepository, CharacterRepository, ChapterRepository
 )
+from app.agents.context_synthesizer import ContextSynthesizerAgent # Added import
 from app.agents import (
     NarrativePathfinderAgent,
     WorldWeaverAgent,
@@ -427,45 +428,71 @@ class NovelGenerationService:
     async def _get_previous_summary(self, project_id: str, chapter_number: int) -> str:
         """获取前情提要"""
         if chapter_number <= 1:
-            return ""
+            return "这是故事的第一章，没有前情提要。"
 
-        # 获取前面的章节
-        previous_chapters = self.chapter_repo.get_by_project_id(project_id)
-        previous_chapters = [ch for ch in previous_chapters if ch.chapter_number < chapter_number]
+        # 1. Instantiate ContextSynthesizerAgent
+        context_agent = ContextSynthesizerAgent(llm=self.llm)
 
-        if not previous_chapters:
-            return ""
+        # 2. Fetch all previous chapters
+        all_project_chapters = self.chapter_repo.get_by_project_id(project_id)
+        previous_chapters_data = []
+        for ch_model in all_project_chapters:
+            if ch_model.chapter_number < chapter_number:
+                # Adapt the chapter model to the dictionary format expected by ContextSynthesizerAgent
+                previous_chapters_data.append({
+                    "chapter_number": ch_model.chapter_number,
+                    "title": ch_model.title,
+                    "content": ch_model.content,
+                    # Add other relevant fields if ContextSynthesizerAgent uses them
+                })
 
-        # 生成详细的前情提要
-        summary_parts = []
+        if not previous_chapters_data:
+            return "这是故事的第一章（或前面的章节数据丢失），没有足够的前情提要。"
 
-        # 获取项目的基本信息
-        selected_concept = self.concept_repo.get_selected_by_project_id(project_id)
-        selected_world_setting = self.world_setting_repo.get_selected_by_project_id(project_id)
-        selected_characters = self.character_repo.get_selected_by_project_id(project_id)
+        # 3. Retrieve world setting and character profiles
+        world_setting_model = self.world_setting_repo.get_selected_by_project_id(project_id)
+        character_profiles_models = self.character_repo.get_selected_by_project_id(project_id)
 
-        # 添加基本设定信息
-        if selected_concept:
-            summary_parts.append(f"故事背景：{selected_concept.content[:200]}...")
+        world_setting_content = world_setting_model.content if world_setting_model else {}
+        # Character profiles are expected as a list of dicts by the synthesizer
+        character_profiles_content = [cp_model.content for cp_model in character_profiles_models] if character_profiles_models else []
 
-        if selected_world_setting:
-            world_content = selected_world_setting.content
-            if isinstance(world_content, dict):
-                world_desc = world_content.get("description", "")
-                if world_desc:
-                    summary_parts.append(f"世界观：{world_desc[:200]}...")
 
-        if selected_characters:
-            char_content = selected_characters[0].content if selected_characters else {}
-            if isinstance(char_content, dict) and "characters" in char_content:
-                char_names = [char.get("name", "") for char in char_content["characters"][:3]]
-                if char_names:
-                    summary_parts.append(f"主要人物：{', '.join(char_names)}")
+        # 4. Prepare input for ContextSynthesizerAgent
+        # key_events and character_states are not readily available here, so pass empty or None
+        input_data = {
+            "chapters": previous_chapters_data,
+            "world_setting": world_setting_content,
+            "character_profiles": character_profiles_content,
+            "key_events": [],  # Placeholder, as this data isn't directly managed here
+            "character_states": {}, # Placeholder
+            "mode": "layered"
+        }
 
-        # 添加前面章节的摘要
-        summary_parts.append("\n前情回顾：")
-        for chapter in previous_chapters[-3:]:  # 只取最近3章
-            content_preview = chapter.content[:300] if chapter.content else ""
-            summary_parts.append(f"第{chapter.chapter_number}章《{chapter.title}》：{content_preview}...")
+        # 5. Call ContextSynthesizerAgent.run
+        layered_context_dict = await context_agent.run(input_data)
 
-        return "\n".join(summary_parts)
+        # 6. Format the multi-level summary string
+        # This replicates the formatting logic that was previously in ChapterChroniclerAgent._generate_enhanced_summary
+        # and is now expected by ChapterChroniclerAgent's main prompt template.
+
+        long_term = layered_context_dict.get('long_term_summary', '无长期发展脉络信息。')
+        medium_term = layered_context_dict.get('medium_summary', '无中期剧情发展信息。')
+        recent_term = layered_context_dict.get('recent_summary', '无近期即时情境信息。')
+        # The 'summary' from layered_context_dict is the overall one for the next chapter.
+        comprehensive_summary = layered_context_dict.get('summary', '未能生成综合前情提要。')
+
+        formatted_summary_string = f"""
+### 长期故事脉络回顾 (Long-Term Context):
+{long_term}
+
+### 中期剧情发展 (Medium-Term Context - Last 5-10 Chapters):
+{medium_term}
+
+### 最新即时情境 (Recent Context - Last 1-3 Chapters):
+{recent_term}
+
+### 综合前情提要 (Overall Summary for this Chapter):
+{comprehensive_summary}
+"""
+        return formatted_summary_string.strip()

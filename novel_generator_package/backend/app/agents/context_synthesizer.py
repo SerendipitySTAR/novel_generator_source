@@ -267,8 +267,8 @@ class ContextSynthesizerAgent(BaseAgent):
         Returns:
             Dict[str, Any]: 分层上下文结果
         """
-        # 1. 全局上下文（世界观、主要人物）
-        global_context = await self._build_global_context(world_setting, character_profiles)
+        # 1. 长期上下文（贯穿整个小说的主要情节线、人物发展和伏笔）
+        long_term_context = await self._build_long_term_context(chapters, key_events, character_states, world_setting, character_profiles)
 
         # 2. 中期上下文（近期章节的关键事件）
         medium_context = await self._build_medium_context(chapters, key_events)
@@ -277,47 +277,77 @@ class ContextSynthesizerAgent(BaseAgent):
         immediate_context = await self._build_immediate_context(chapters)
 
         # 4. 综合前情提要
-        comprehensive_summary = await self._build_comprehensive_summary(global_context, medium_context, immediate_context)
+        comprehensive_summary = await self._build_comprehensive_summary(long_term_context, medium_context, immediate_context)
 
         return {
             "summary": comprehensive_summary,
-            "global_context": global_context,
-            "medium_context": medium_context,
-            "immediate_context": immediate_context
+            "long_term_summary": long_term_context, # Updated key
+            "medium_summary": medium_context, # Updated key
+            "recent_summary": immediate_context # Updated key
         }
 
-    async def _build_global_context(self, world_setting: Dict, character_profiles: List[Dict]) -> str:
+    async def _build_long_term_context(self, chapters: List[Dict], key_events: List, character_states: Dict, world_setting: Dict, character_profiles: List[Dict]) -> str:
         """
-        构建全局上下文（世界观、主要人物）
+        构建长期上下文（贯穿整个小说的主要情节线、人物发展和伏笔）
         """
-        prompt_template = """请根据以下世界观设定和人物设定，生成一个简洁的全局背景介绍（200字以内）：
+        prompt_template = """你是一位资深的小说编辑。请根据以下提供的整个故事至今的全部章节、关键事件、人物状态、世界观和人物设定，生成一份长期的故事发展总结（约400-600字）。这份总结应该追踪主要的剧情线索，关键人物的成长与变化，以及作者埋下的重要伏笔和尚未解决的谜团。
 
 ## 世界观设定：
 {world_setting_text}
 
-## 主要人物：
+## 主要人物设定：
 {character_profiles_text}
 
-请提取最核心的世界观要素和主要人物信息，形成简洁的背景介绍。重点突出：
-1. 世界的基本设定和特色
-2. 主要人物的身份和关系
-3. 核心的世界规则或体系
+## 至今的全部章节摘要：
+{chapters_summary_text}
 
-格式要求：简洁明了，突出重点，控制在200字以内。
+## 关键事件回顾：
+{key_events_text}
+
+## 主要人物当前状态：
+{character_states_text}
+
+请综合以上所有信息，生成一份长期的故事发展总结。重点分析：
+1.  **主要剧情线索**：识别并总结故事中的核心情节线，它们是如何发展的？目前进展到哪个阶段？
+2.  **关键人物发展**：主要人物（特别是主角）经历了哪些重要的成长、转变或学到了什么？他们的目标和动机有何变化？
+3.  **伏笔与谜团**：作者在故事中埋下了哪些重要的伏笔？有哪些尚未解开的谜团或悬念？这些对未来情节可能产生什么影响？
+4.  **主题与基调**：故事到目前为止展现了哪些核心主题？整体基调是怎样的？
+
+这份总结的目的是为了让创作者（或AI助手）能够清晰地把握故事的全貌和长期走向，确保后续章节的创作能够与前面内容保持一致性和连贯性。请确保总结的深度和广度，而不仅仅是表面事件的罗列。
 """
 
         world_setting_text = self._world_setting_to_text(world_setting)
         character_profiles_text = self._character_profiles_to_text(character_profiles)
 
+        # For long-term context, we might want to summarize chapters differently, perhaps focusing on outcomes and major turns.
+        # For now, let's use a simpler summary.
+        chapters_summary_text = ""
+        if chapters:
+            # Summarize each chapter briefly to keep the prompt manageable
+            for chapter in chapters:
+                title = chapter.get("title", f"第{chapter.get('chapter_number', '')}章")
+                content = chapter.get("content", "")
+                # Create a very brief summary or use existing chapter summaries if available
+                summary = content[:100] + "..." if len(content) > 100 else content
+                chapters_summary_text += f"{title}: {summary}\n"
+        else:
+            chapters_summary_text = "目前还没有章节内容。"
+
+        key_events_text = self._key_events_to_text(key_events)
+        character_states_text = self._character_states_to_text(character_states)
+
         prompt = await self._generate_prompt(prompt_template, {
-            "world_setting_text": world_setting_text[:500],  # 限制长度
-            "character_profiles_text": character_profiles_text[:500]
+            "world_setting_text": world_setting_text,
+            "character_profiles_text": character_profiles_text,
+            "chapters_summary_text": chapters_summary_text,
+            "key_events_text": key_events_text,
+            "character_states_text": character_states_text
         })
 
         response = await self.llm.generate_text(
             prompt=prompt,
-            temperature=0.3,
-            max_tokens=300,
+            temperature=0.5, # Slightly higher for more abstract summarization
+            max_tokens=800, # Allow for a more detailed summary
             top_p=settings.AGENT_TOP_P
         )
 
@@ -328,47 +358,60 @@ class ContextSynthesizerAgent(BaseAgent):
         构建中期上下文（近期章节的关键事件）
         """
         if not chapters:
-            return "这是故事的开始。"
+            return "这是故事的开始，还没有中期发展。"
 
-        # 取最近3-5章
-        recent_chapters = chapters[-5:] if len(chapters) > 5 else chapters
+        # 取最近5-10章
+        # Determine the range of chapters to consider for medium-term context
+        num_chapters = len(chapters)
+        if num_chapters == 0:
+            return "这是故事的开始，还没有中期发展。"
 
-        prompt_template = """请根据以下近期章节内容，提取关键事件和重要发展（300字以内）：
+        start_index = max(0, num_chapters - 10) # Start from at most 10 chapters ago
+        if num_chapters <= 5: # If 5 or fewer chapters, take all of them
+             medium_term_chapters = chapters
+        else: # if more than 5 chapters, take last 5 to 10.
+            start_index = max(0, num_chapters - 10)
+            # Ensure we take at least 5 if possible, up to 10.
+            actual_start_index = min(start_index, num_chapters - 5) if num_chapters > 5 else 0
+            medium_term_chapters = chapters[actual_start_index:]
 
-## 近期章节：
-{recent_chapters_text}
 
-## 已知关键事件：
+        prompt_template = """你是一位敏锐的剧情分析师。请根据以下最近5至10个章节的内容以及已知的关键事件，生成一份中期剧情回顾（约300-500字）。这份回顾应该聚焦于这段时期内的关键情节进展、主要人物的行动和心路历程变化、以及重要的冲突和解决方案。
+
+## 近期章节（最近5-10章）：
+{medium_term_chapters_text}
+
+## 已知关键事件（可能部分与近期章节重叠）：
 {key_events_text}
 
-请重点关注：
-1. 重要的情节发展和转折点
-2. 人物关系的变化
-3. 新出现的冲突或问题
-4. 对后续发展有影响的事件
+请重点分析并总结：
+1.  **核心情节推进**：在这些章节中，主线或重要的次线情节有哪些实质性的进展？关键的转折点是什么？
+2.  **角色弧光**：主要人物在这段时间内经历了哪些挑战？他们的目标、动机或人际关系有何变化？是否有明显的角色成长或转变的迹象？
+3.  **关键冲突与解决**：这段时期内出现了哪些主要的冲突？它们是如何被解决的，或者目前进展到什么状态？
+4.  **伏笔与铺垫**：这些章节中是否为未来的剧情埋下了新的伏笔或进行了铺垫？
 
-格式要求：按时间顺序，突出关键事件，控制在300字以内。
+这份中期回顾的目的是为了在不回顾整个故事的前提下，快速把握最近一段时间的核心动态，为接下来的创作承上启下。
 """
 
-        recent_chapters_text = ""
-        for chapter in recent_chapters:
+        medium_term_chapters_text = ""
+        for chapter in medium_term_chapters:
             title = chapter.get("title", f"第{chapter.get('chapter_number', '')}章")
             content = chapter.get("content", "")
-            # 提取章节摘要
-            summary = content[:150] + "..." if len(content) > 150 else content
-            recent_chapters_text += f"{title}：{summary}\n\n"
+            # 提取章节摘要，可以稍微详细一点
+            summary = content[:200] + "..." if len(content) > 200 else content
+            medium_term_chapters_text += f"{title}：{summary}\n\n"
 
-        key_events_text = self._key_events_to_text(key_events)
+        key_events_text = self._key_events_to_text(key_events) # Consider filtering key events relevant to this period if possible
 
         prompt = await self._generate_prompt(prompt_template, {
-            "recent_chapters_text": recent_chapters_text,
-            "key_events_text": key_events_text[:300]
+            "medium_term_chapters_text": medium_term_chapters_text,
+            "key_events_text": key_events_text # Pass all key events for now, LLM can pick relevant ones
         })
 
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.4,
-            max_tokens=400,
+            max_tokens=600, # Increased token limit for a more detailed summary
             top_p=settings.AGENT_TOP_P
         )
 
@@ -379,76 +422,88 @@ class ContextSynthesizerAgent(BaseAgent):
         构建即时上下文（上一章的直接影响）
         """
         if not chapters:
-            return "故事即将开始。"
+            return "故事即将开始，尚无即时情节。"
 
-        last_chapter = chapters[-1]
+        # Consider last 1-3 chapters for immediate context
+        num_chapters = len(chapters)
+        if num_chapters == 0:
+            return "故事即将开始，尚无即时情节。"
 
-        prompt_template = """请根据上一章的内容，总结对下一章的直接影响（150字以内）：
+        immediate_chapters_count = min(num_chapters, 3) # Take up to 3 chapters
+        recent_chapters_for_immediate = chapters[-immediate_chapters_count:]
 
-## 上一章内容：
-标题：{last_chapter_title}
-内容：{last_chapter_content}
+        prompt_template = """你是一位专注于当前时刻的叙事助手。请根据最近1至3个章节的内容，生成一份即时情境回顾（约150-250字）。这份回顾需要精准捕捉故事最新进展、人物的即时状态、以及直接引导下一章节的悬念或任务。
 
-请重点关注：
-1. 章节结尾的情况和悬念
-2. 人物当前的状态和位置
-3. 未解决的问题或冲突
-4. 对下一章的直接影响
+## 最近章节（最后1-3章）：
+{recent_chapters_text}
 
-格式要求：简洁明了，重点突出，控制在150字以内。
+请重点总结：
+1.  **最新事件**：刚刚发生了什么核心事件？故事线索推进到了哪里？
+2.  **人物即时状态**：主要人物（特别是视角人物）目前的情绪、位置、健康状况、以及他们下一步最可能采取的行动是什么？
+3.  **直接悬念/任务**：当前是否存在未解的悬念、迫在眉睫的危机、或角色需要立即着手的任务？
+4.  **对下一章的铺垫**：最新章节的结局是如何为下一章的开篇做铺垫的？
+
+这份即时回顾的目的是为了确保新章节能够紧密衔接当前剧情，保持故事的即时连贯性和紧张感。
 """
 
-        last_chapter_title = last_chapter.get("title", f"第{last_chapter.get('chapter_number', '')}章")
-        last_chapter_content = last_chapter.get("content", "")
+        recent_chapters_text = ""
+        for chapter in recent_chapters_for_immediate:
+            title = chapter.get("title", f"第{chapter.get('chapter_number', '')}章")
+            content = chapter.get("content", "")
+            summary = content[:500] + "..." if len(content) > 500 else content # Allow slightly more content for immediate context
+            recent_chapters_text += f"### {title}\n{summary}\n\n"
 
         prompt = await self._generate_prompt(prompt_template, {
-            "last_chapter_title": last_chapter_title,
-            "last_chapter_content": last_chapter_content[:800]  # 限制长度
+            "recent_chapters_text": recent_chapters_text
         })
 
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.3,
-            max_tokens=200,
+            max_tokens=300, # Adjusted for a 150-250 word summary
             top_p=settings.AGENT_TOP_P
         )
 
         return response.text.strip()
 
-    async def _build_comprehensive_summary(self, global_context: str, medium_context: str, immediate_context: str) -> str:
+    async def _build_comprehensive_summary(self, long_term_context: str, medium_context: str, recent_context: str) -> str:
         """
         构建综合前情提要
         """
-        prompt_template = """请根据以下分层信息，生成一个完整的前情提要（500字以内）：
+        prompt_template = """你是一位小说前情提要专家。请根据以下提供的长期故事脉络、中期剧情发展以及最新的即时情境，编织一个全面且引人入胜的前情提要（建议500字左右，可根据内容调整）。这份提要需要无缝整合各个时间维度的信息，为读者（或AI写手）提供一个清晰、连贯的故事背景，确保新章节的创作能够自然融入整体叙事。
 
-## 全局背景：
-{global_context}
+## 长期故事脉络回顾：
+(这部分总结了整个故事至今的主要情节线、核心人物的长期发展、以及重要的伏笔和主题)
+{long_term_context}
 
-## 近期发展：
+## 中期剧情发展：
+(这部分聚焦于最近5-10个章节的关键情节、人物弧光和冲突演变)
 {medium_context}
 
-## 当前状况：
-{immediate_context}
+## 最新即时情境：
+(这部分概括了最后1-3个章节的核心事件、人物当前状态和直接面临的悬念或任务)
+{recent_context}
 
-请整合以上信息，生成一个连贯、完整的前情提要。要求：
-1. 逻辑清晰，层次分明
-2. 突出重点，避免冗余
-3. 为下一章的生成提供充分的背景信息
-4. 控制在500字以内
+请综合以上三个层面的信息，撰写一份引人入胜的前情提要。要求：
+1.  **无缝整合**：自然地将长期、中期和即时信息融合在一起，形成一个连贯的叙述流程。
+2.  **突出重点**：强调对理解当前故事节点最重要的信息，如主要人物的核心目标、当前的危机、重要的未解之谜等。
+3.  **引导创作**：提要的结尾应当能够自然地引导至下一章节的开端，暗示读者或AI写手接下来可能发生什么。
+4.  **保持风格**：尽量贴合小说的叙事风格和基调。
+5.  **字数控制**：目标500字左右，但可根据信息量灵活调整，确保内容的完整性和吸引力。
 
-格式：使用**加粗**突出关键信息。
+请使用**加粗**来高亮显示关键的人物、地点、事件或悬念。
 """
 
         prompt = await self._generate_prompt(prompt_template, {
-            "global_context": global_context,
+            "long_term_context": long_term_context,
             "medium_context": medium_context,
-            "immediate_context": immediate_context
+            "recent_context": recent_context # Ensure key matches
         })
 
         response = await self.llm.generate_text(
             prompt=prompt,
-            temperature=0.4,
-            max_tokens=600,
+            temperature=0.4, # Keep it balanced
+            max_tokens=700, # Allow for a comprehensive summary
             top_p=settings.AGENT_TOP_P
         )
 

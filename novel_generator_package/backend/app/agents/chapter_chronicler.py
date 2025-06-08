@@ -79,22 +79,50 @@ class ChapterChroniclerAgent(BaseAgent):
         ## 主要登场人物当前状态与目标：
         {character_states}
 
-        ## 增强前情提要：
+        ## 增强前情提要 (Utilize these summaries for consistency and continuity):
         {enhanced_summary}
 
+        ---
+        ## 章节叙事策略 (Chapter Narrative Strategy):
+
+        ### 1. 小说整体节奏与当前章节定位 (Long-form Novel Pacing and Chapter Role):
+        *   **当前小说进展 (Novel Progress)**: {novel_progress}
+            *   (例如: 初期构建世界观与角色, 中期发展核心冲突, 接近高潮, 高潮后余波)
+        *   **本章节类型 (Chapter Type)**: {chapter_type}
+            *   (例如: 铺垫型 - 引入新线索或加深悬念; 发展型 - 推进主线情节; 冲突型 - 关键对抗或转折; 解决型 -某个小高潮的收尾; 反应/反思型 - 人物对事件的消化与成长)
+        *   **叙事节奏建议**:
+            *   根据以上定位，调整本章的叙事节奏。例如，铺垫型章节可能节奏稍缓，注重细节描写和氛围营造；冲突型章节则应加快节奏，多用短句和动作描写。思考如何通过句式、段落长短、场景转换频率来控制节奏，使其服务于当前章节在整个长篇故事中的作用。
+
+        ### 2. 情绪张力构建与演进 (Emotional Tension and Progression):
+        *   **目标情绪张力水平 (Target Tension Level)**: {tension_level}
+            *   (例如: 低 - 构建期待感; 中 - 保持悬念或不安; 高 - 顶点冲突/危机; 释放 - 紧张后的平静或悲伤)
+        *   **情绪管理指令**:
+            *   请在本章中有意识地操控读者情绪。如果目标是“高”，则要逐步累积紧张感，直到爆发点；如果目标是“释放”，则要在激烈冲突后给予角色和读者喘息的空间，展现事件的余波和角色的情感反应。利用对话、内心独白、场景描写等手段来精确控制情绪的起伏。
+
+        ### 3. 情节线索管理 (Plot Thread Management):
+        *   **本章需处理的长期目标/线索 (Relevant Long-term Goals/Threads for this Chapter)**:
+            {long_term_goals}
+            *   (例如: 推进A主线任务至某阶段; 侧面展现B副线情节的进展; 提及或强化某个早期埋下的伏笔C; 引入新的悬念D为未来铺路)
+        *   **线索编织指令**:
+            *   根据“增强前情提要”中的长期和中期回顾，思考本章如何巧妙地推进或关联上述线索。
+            *   对于主线，确保有实质进展。对于副线，可以适当穿插，保持其活跃度。
+            *   如果本章适合，可以回应旧的伏笔或埋下新的伏笔。注意伏笔的自然融入，避免生硬。
+            *   思考如何在本章结尾留下恰当的悬念 (hook)，吸引读者继续。
+
+        ---
         {coherence_requirements}
 
         {branch_info}
 
-        ## 写作要求：
-        1. 严格遵循以上所有设定和前情。
-        2. 保持{writing_style}风格。
-        3. 重点描写大纲指定的关键场景和互动。
-        4. 确保人物言行符合其性格和当前动机。
-        5. 推动情节向大纲指定方向发展。
-        6. 字数约{word_count}字。
-        7. 章节内容要完整，包含开头、发展和结尾。
-        8. 特别注意与前面章节的连贯性和逻辑一致性。
+        ## 核心写作要求 (Core Writing Instructions):
+        1.  **严格一致性**: 严格遵循以上所有设定，特别是增强前情提要中的长期、中期和即时情境，确保故事的连贯性。参考“长期故事脉络回顾”以保证与小说整体走向一致，参考“中期剧情发展”以衔接近期重要情节，参考“最新即时情境”以确保与上一章的直接连续性。
+        2.  **风格保持**: 保持 {writing_style} 风格。
+        3.  **大纲指引**: 重点描写大纲指定的关键场景和互动。
+        4.  **人物塑造**: 确保人物言行符合其性格、当前动机以及“主要登场人物当前状态与目标”中的描述。
+        5.  **情节推进**: 推动情节向大纲指定方向发展，同时考虑“章节叙事策略”中的节奏、情绪和线索管理要求。
+        6.  **字数**: 约 {word_count} 字。
+        7.  **完整性**: 章节内容要完整，包含开头、发展和结尾，并考虑章节在整体叙事中的作用。
+        8.  **叙事质量**: 运用生动的描写、恰当的对话和合理的节奏，提升章节的可读性和吸引力。
 
         请开始撰写本章内容：
         """
@@ -157,6 +185,13 @@ class ChapterChroniclerAgent(BaseAgent):
         # 预计字数
         word_count = chapter_outline.get("word_count", settings.DEFAULT_CHAPTER_LENGTH)
 
+        # Placeholder values for new inputs, to be replaced by actual data from input_data when available
+        novel_progress = input_data.get("novel_progress", "未指定小说整体进展") # e.g., "故事初期", "中期发展", "接近高潮"
+        chapter_type = input_data.get("chapter_type", "未指定章节类型") # e.g., "铺垫", "冲突", "解谜"
+        tension_level = input_data.get("tension_level", "未指定情绪张力") # e.g., "低 - 构建期待", "高 - 顶点冲突"
+        long_term_goals = input_data.get("long_term_goals", "未指定长期目标/线索") # e.g., "推进主角A的任务", "揭示反派B的动机"
+
+
         prompt = await self._generate_prompt(prompt_template, {
             "writing_style": writing_style,
             "chapter_number": chapter_number,
@@ -165,7 +200,11 @@ class ChapterChroniclerAgent(BaseAgent):
             "world_setting": world_setting_text,
             "chapter_outline": chapter_outline_text,
             "character_states": character_states_text,
-            "enhanced_summary": enhanced_summary,
+            "enhanced_summary": enhanced_summary, # This is the formatted string from _generate_enhanced_summary
+            "novel_progress": novel_progress,
+            "chapter_type": chapter_type,
+            "tension_level": tension_level,
+            "long_term_goals": long_term_goals,
             "coherence_requirements": coherence_requirements,
             "branch_info": branch_info,
             "word_count": word_count
@@ -477,18 +516,33 @@ class ChapterChroniclerAgent(BaseAgent):
         })
 
         # 整合分层上下文和基础前情提要
-        enhanced_summary = f"""
-## 故事背景
-{layered_context.get('global_context', '')}
+        # The 'summary' key from layered_context is the comprehensive summary
+        # The other keys are the distinct layers. We want to pass these distinct layers
+        # clearly to the chapter generation prompt.
 
-## 近期发展
-{layered_context.get('medium_context', '')}
+        long_term = layered_context.get('long_term_summary', '无长期发展脉络信息。')
+        medium_term = layered_context.get('medium_summary', '无中期剧情发展信息。')
+        recent_term = layered_context.get('recent_summary', '无近期即时情境信息。')
+        comprehensive_summary = layered_context.get('summary', basic_summary) # Fallback to basic_summary if not found
 
-## 当前状况
-{layered_context.get('immediate_context', '')}
+        # Format these summaries into a structured string for the chapter prompt
+        formatted_enhanced_summary = f"""
+### 长期故事脉络回顾 (Long-Term Context):
+{long_term}
 
-## 详细前情提要
-{basic_summary}
+### 中期剧情发展 (Medium-Term Context - Last 5-10 Chapters):
+{medium_term}
+
+### 最新即时情境 (Recent Context - Last 1-3 Chapters):
+{recent_term}
+
+### 综合前情提要 (Overall Summary for this Chapter):
+{comprehensive_summary}
 """
+        # If basic_summary is different and provides more details (e.g. user-provided), consider appending it or integrating it.
+        # For now, the comprehensive_summary from layered_context is expected to be sufficient.
+        # If basic_summary is crucial and distinct, it could be added:
+        # if basic_summary and basic_summary not in comprehensive_summary:
+        #    formatted_enhanced_summary += f"\n## 补充前情提要:\n{basic_summary}"
 
-        return enhanced_summary.strip()
+        return formatted_enhanced_summary.strip()

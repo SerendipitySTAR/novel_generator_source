@@ -27,8 +27,61 @@ class NovelWorkflow:
             "selected_outputs": {},
             "current_chapter": 1,
             "max_chapters": 10,  # 默认章节数，可由用户修改
+            "cumulative_quality_scores": [], # Initialize new field
+            "current_chapter_quality": None, # Placeholder for quality score
+            "current_chapter_feedback": None, # Placeholder for feedback
+            "current_chapter_transition_score": None, # Placeholder for transition score
         }
     
+    # Placeholder Node Implementations
+    def _assess_chapter_transition(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Placeholder node for assessing chapter transition quality."""
+        print("Workflow Node: _assess_chapter_transition - Chapter transition assessment would happen here.")
+        # Simulate transition assessment
+        state_data['current_chapter_transition_score'] = 0.85  # Example placeholder score
+        # In a real scenario, this might involve calling an agent:
+        # transition_assessment = await some_agent.run(
+        #     previous_chapter_content=state_data.get('previous_chapter_content'),
+        #     current_chapter_content=state_data.get('current_generated_chapter_content')
+        # )
+        # state_data['current_chapter_transition_score'] = transition_assessment.get('score')
+        # state_data['current_chapter_transition_feedback'] = transition_assessment.get('feedback')
+        return state_data
+
+    def _update_cumulative_quality_scores(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Node to update cumulative quality scores for chapters."""
+        print("Workflow Node: _update_cumulative_quality_scores - Updating cumulative quality scores.")
+        current_chapter_num = state_data.get('current_chapter', 0)
+        # Assuming 'current_chapter_quality' and 'current_chapter_feedback' are populated by 'evaluate_chapter' or 'polish_chapter'
+        quality_score = state_data.get('current_chapter_quality', 'N/A')
+        feedback = state_data.get('current_chapter_feedback', 'N/A')
+
+        # Ensure 'cumulative_quality_scores' list exists
+        if 'cumulative_quality_scores' not in state_data:
+            state_data['cumulative_quality_scores'] = []
+
+        state_data['cumulative_quality_scores'].append({
+            "chapter_number": current_chapter_num,
+            "quality_score": quality_score,
+            "feedback": feedback,
+            "transition_score": state_data.get('current_chapter_transition_score', 'N/A') # Also log transition score
+        })
+        print(f"Cumulative scores: {state_data['cumulative_quality_scores']}")
+        return state_data
+
+    def _check_long_term_consistency(self, state_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Placeholder node for checking long-term plot consistency."""
+        print("Workflow Node: _check_long_term_consistency - Long-term consistency check would happen here.")
+        # In a real scenario, this would call an agent:
+        # consistency_report = await some_consistency_agent.run(
+        #     all_chapters=state_data.get('all_chapters_data'),
+        #     world_setting=state_data.get('selected_world_setting_content'),
+        #     plot_outline=state_data.get('selected_plot_outline_content'),
+        #     long_term_summary=state_data.get('long_term_summary_from_context_agent')
+        # )
+        # state_data['last_consistency_check_report'] = consistency_report
+        return state_data
+
     def _build_workflow(self) -> StateGraph:
         """
         构建工作流图
@@ -57,11 +110,14 @@ class NovelWorkflow:
         workflow.add_node("generate_plot_branches", {})
         workflow.add_node("select_plot_branch", {})
         workflow.add_node("generate_chapter", {})
+        workflow.add_node("assess_chapter_transition", self._assess_chapter_transition) # New Node
         workflow.add_node("evaluate_chapter", {})
         workflow.add_node("retry_chapter", {})
         workflow.add_node("user_edit_chapter", {})
         workflow.add_node("polish_chapter", {})
+        workflow.add_node("update_cumulative_scores", self._update_cumulative_quality_scores) # New Node
         workflow.add_node("update_knowledge_base", {})
+        workflow.add_node("check_long_term_consistency", self._check_long_term_consistency) # New Node
         workflow.add_node("check_more_chapters", {})
         workflow.add_node("complete_novel", {})
         
@@ -96,27 +152,39 @@ class NovelWorkflow:
         )
         workflow.add_edge("generate_plot_branches", "select_plot_branch")
         workflow.add_edge("select_plot_branch", "generate_chapter")
-        workflow.add_edge("generate_chapter", "evaluate_chapter")
+
+        # Modified Edges for new nodes
+        workflow.add_edge("generate_chapter", "assess_chapter_transition")
+        workflow.add_edge("assess_chapter_transition", "evaluate_chapter")
+
         workflow.add_conditional_edges(
             "evaluate_chapter",
             lambda x: self._evaluate_chapter_decision(x),
             {
                 "retry": "retry_chapter",
                 "user_edit": "user_edit_chapter",
-                "accept": "polish_chapter"
+                "accept": "polish_chapter" # Accepted chapters go to polish (or directly to update scores if polish is skipped)
             }
         )
         workflow.add_edge("retry_chapter", "generate_chapter")
         workflow.add_edge("user_edit_chapter", "polish_chapter")
+
+        # If polish_chapter is chosen or skipped, it goes to update_cumulative_scores
         workflow.add_conditional_edges(
             "polish_chapter",
-            lambda x: "polish" if x.get("polish_chapter", False) else "skip_polish",
+            lambda x: "polish" if x.get("polish_chapter_needed", True) else "skip_polish", # Assuming a flag like 'polish_chapter_needed'
             {
-                "polish": "update_knowledge_base",
-                "skip_polish": "update_knowledge_base"
+                "polish": "update_cumulative_scores", # Actual polishing would happen then update scores
+                "skip_polish": "update_cumulative_scores" # Skip polish, directly update scores
             }
         )
-        workflow.add_edge("update_knowledge_base", "check_more_chapters")
+        # Edge from update_cumulative_scores to update_knowledge_base
+        workflow.add_edge("update_cumulative_scores", "update_knowledge_base")
+
+        # Modified Edges for new node
+        workflow.add_edge("update_knowledge_base", "check_long_term_consistency")
+        workflow.add_edge("check_long_term_consistency", "check_more_chapters")
+
         workflow.add_conditional_edges(
             "check_more_chapters",
             lambda x: "more_chapters" if self._has_more_chapters(x) else "complete",

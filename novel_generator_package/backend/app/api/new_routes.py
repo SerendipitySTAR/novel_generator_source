@@ -71,12 +71,18 @@ class ChapterGenerateRequest(BaseModel):
     writing_style: str = "详细生动"
 
 class ChapterGenerateRequestV2(BaseModel):
-    chapter_outline: dict
+    chapter_outline: dict # Should include chapter_number, title, etc.
     world_setting: dict
-    character_profiles: list
+    character_profiles: list # List of character profile dicts
     previous_summary: str = ""
     kb_context: list = []
     writing_style: str = "详细生动"
+
+class ChapterGenerateRequestV3(ChapterGenerateRequestV2):
+    novel_progress: Optional[float] = None  # e.g., 0.0 (start) to 1.0 (end)
+    tension_level: Optional[str] = None     # e.g., "low", "rising", "peak", "falling", "resolution"
+    chapter_type: Optional[str] = None      # e.g., "introduction", "rising_action", "climax", "subplot_development"
+    long_term_goals: Optional[List[str]] = None # List of active long-term plot points or character arcs for this chapter
 
 class ChapterGenerateWithQualityCheckRequest(BaseModel):
     chapter_outline: dict
@@ -838,22 +844,18 @@ async def get_chapters(
 @router.post("/projects/{project_id}/chapters")
 async def generate_chapter(
     project_id: str,
-    request: ChapterGenerateRequestV2,
-    novel_service: NovelGenerationService = Depends(get_novel_service)
+    request: ChapterGenerateRequestV3, # Changed to V3
+    novel_service: NovelGenerationService = Depends(get_novel_service) # novel_service is injected but not used directly here for agent call
 ):
     """生成章节内容"""
     try:
-        print(f"=== 章节生成请求开始 ===")
+        print(f"=== 章节生成请求开始 (V3) ===")
         print(f"项目ID: {project_id}")
         print(f"请求数据: {request.model_dump()}")
-        print(f"章节大纲: {request.chapter_outline}")
-        print(f"世界设定: {request.world_setting}")
-        print(f"人物设定: {request.character_profiles}")
-        print(f"写作风格: {request.writing_style}")
+        # Removed detailed logging of each field for brevity, model_dump() covers it.
 
-        # 验证项目是否存在
+        # 验证项目是否存在 (This should ideally be handled by the service layer or a dependency)
         from app.db.repositories import ProjectRepository
-
         db_gen = get_db()
         db = next(db_gen)
         try:
@@ -866,20 +868,30 @@ async def generate_chapter(
 
         # 使用ChapterChroniclerAgent直接生成章节
         from app.agents.chapter_chronicler import ChapterChroniclerAgent
-        from app.core.llm import OpenAILLM
+        from app.core.llm import OpenAILLM # Assuming OpenAILLM is the desired LLM interface
 
+        # It might be better to get the LLM instance from a central place if possible,
+        # e.g., from novel_service.llm if it's exposed and appropriate.
         agent = ChapterChroniclerAgent(llm=OpenAILLM(), project_id=project_id)
 
-        # 调用智能体生成章节内容
-        result = await agent.run({
+        # Prepare input_data for the agent, including new fields
+        input_data_for_agent = {
             "mode": "generate",
             "chapter_outline": request.chapter_outline,
             "world_setting": request.world_setting,
             "character_profiles": request.character_profiles,
             "previous_summary": request.previous_summary,
             "kb_context": request.kb_context,
-            "writing_style": request.writing_style
-        })
+            "writing_style": request.writing_style,
+            # New fields for V3
+            "novel_progress": request.novel_progress,
+            "tension_level": request.tension_level,
+            "chapter_type": request.chapter_type,
+            "long_term_goals": request.long_term_goals,
+        }
+
+        # 调用智能体生成章节内容
+        result = await agent.run(input_data_for_agent)
 
         # 添加调试日志
         print(f"智能体返回结果: {result}")
