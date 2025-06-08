@@ -120,6 +120,22 @@ class TestChapterChroniclerAgent(unittest.IsolatedAsyncioTestCase):
             self.assertIn("{chapter_type}", prompt_template_arg)
             self.assertIn("{long_term_goals}", prompt_template_arg)
 
+            # Assertions for refined chapter rhythm control (new in this subtask)
+            self.assertIn("具体示例", prompt_template_arg) # "Specific Examples"
+            self.assertIn("若 `chapter_type` 是 '铺垫型 (setup)' 且 `tension_level` 是 '低 (low)'", prompt_template_arg)
+            self.assertIn("若 `chapter_type` 是 '冲突型 (conflict)' 或 '高潮型 (climax)'", prompt_template_arg)
+            self.assertIn("请将这些建议视为参考，并根据具体章节大纲和创意灵活运用", prompt_template_arg)
+
+            # Assertions for immersive scene setting (new in this subtask)
+            self.assertIn("沉浸式场景构建 (Immersive Scene Setting)", prompt_template_arg)
+            self.assertIn("调动多重感官", prompt_template_arg) # "Engage multiple senses"
+            self.assertIn("视觉 (Visuals)", prompt_template_arg)
+            self.assertIn("听觉 (Sounds)", prompt_template_arg)
+            self.assertIn("嗅觉 (Smells)", prompt_template_arg)
+            self.assertIn("触觉 (Tactile)", prompt_template_arg)
+            self.assertIn("味觉 (Taste)", prompt_template_arg)
+            self.assertIn("自然融入", prompt_template_arg) # "Natural Integration"
+
 
 if __name__ == '__main__':
     unittest.main()

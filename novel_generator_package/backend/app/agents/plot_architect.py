@@ -55,9 +55,24 @@ class PlotArchitectAgent(BaseAgent):
            - 关键转折点
            - 情感基调
            - 伏笔或悬念设置
-        4. 如果是多线叙事，请标明各故事线的章节分布与交叉点
         
-        请特别注意情节的逻辑性、节奏感（张弛有度）、高潮的铺垫与爆发，以及多线叙事（如果适用）的平衡与交织。
+        ## 叙事结构与多线叙事 (Narrative Structure & Multi-Line Narratives)
+        请设计一个主线情节和1-2个重要的次要情节线（B线/C线）。
+        - 主线情节：[简述主线核心发展脉络]
+        - 次要情节线1：[简述其核心发展及与主线的关联]
+        - (可选) 次要情节线2：[简述其核心发展及与主线的关联]
+        - 情节线交织点：明确指出各情节线在哪些关键章节或事件中交汇、相互影响或形成对比。
+
+        ## 主题深度 (Thematic Depth)
+        - 核心主题：[明确小说希望探讨的1-3个核心主题，例如：正义与牺牲、科技伦理的边界、身份认同的追寻、背叛与救赎等]
+        - 主题呈现：简述这些主题将如何通过主要事件、角色行为或冲突来体现，避免说教，力求自然融入。
+
+        ## 关键情节转折 (Key Plot Twists)
+        - 情节转折点1：[描述一个重要的情节转折，它应如何颠覆预期但又在情理之中？何时发生？]
+        - (可选) 情节转折点2：[描述另一个情节转折，如有。]
+        - 伏笔铺垫：简要说明为这些转折点埋下了哪些伏笔。
+
+        请特别注意情节的逻辑性、节奏感（张弛有度）、高潮的铺垫与爆发，以及多线叙事的平衡与交织。
         
         小说概述:
         {narrative_concept}
@@ -79,17 +94,38 @@ class PlotArchitectAgent(BaseAgent):
         1. [章节标题] - [预计字数]
         2. [章节标题] - [预计字数]
         ...
+
+        ## 叙事结构与多线叙事详情
+        ### 主线情节
+        [详细描述主线发展]
+        ### 次要情节线1: [名称]
+        [详细描述B线发展及其与主线的交织点]
+        ### (可选) 次要情节线2: [名称]
+        [详细描述C线发展及其与主线的交织点]
+
+        ## 主题探讨
+        [详细说明主题如何在故事中呈现]
+
+        ## 关键情节转折设计
+        ### 情节转折点1: [名称/简述]
+        - 发生章节/时机:
+        - 具体描述:
+        - 前期伏笔:
+        ### (可选) 情节转折点2: [名称/简述]
+        - 发生章节/时机:
+        - 具体描述:
+        - 前期伏笔:
         
         ## 章节详情
         
         ### 第1章: [章节标题]
         - 主要场景: [详细内容]
         - 出场人物: [详细内容]
-        - 核心事件: [详细内容]
+        - 核心事件: [详细内容] (涉及哪些情节线？)
         - 目标与冲突: [详细内容]
         - 关键转折点: [详细内容]
         - 情感基调: [详细内容]
-        - 伏笔/悬念: [详细内容]
+        - 伏笔/悬念: [详细内容] (为后续哪些情节线或转折铺垫？)
         
         ### 第2章: [章节标题]
         ...以此类推
@@ -168,17 +204,49 @@ class PlotArchitectAgent(BaseAgent):
             outline = {
                 "version": outline_text.split("\n", 1)[0].strip(),
                 "structure": "",
+                "narrative_structure_and_plotlines": {}, # New field
+                "thematic_depth": "", # New field
+                "key_plot_twists": [], # New field
                 "chapters": [],
                 "chapter_details": []
             }
             
-            # 提取总体故事结构
-            if "## 总体故事结构" in outline_text:
-                structure_parts = outline_text.split("## 总体故事结构", 1)[1].split("##", 1)
-                outline["structure"] = structure_parts[0].strip()
+            # Helper function to extract section content
+            def extract_section_content(text, marker):
+                if f"## {marker}" in text:
+                    return text.split(f"## {marker}", 1)[1].split("## ", 1)[0].strip()
+                return ""
+
+            outline["structure"] = extract_section_content(outline_text, "总体故事结构")
             
+            # New sections parsing
+            narrative_details_text = extract_section_content(outline_text, "叙事结构与多线叙事详情")
+            if narrative_details_text:
+                # This parsing can be made more sophisticated if needed
+                outline["narrative_structure_and_plotlines"] = {
+                    "raw_text": narrative_details_text, # Store raw for now, or parse further
+                    "main_plot": self._extract_subsection_content(narrative_details_text, "### 主线情节"),
+                    "subplot_1": self._extract_subsection_content(narrative_details_text, "### 次要情节线1"),
+                    "subplot_2": self._extract_subsection_content(narrative_details_text, "### 次要情节线2")
+                }
+
+            outline["thematic_depth"] = extract_section_content(outline_text, "主题探讨")
+
+            twists_text = extract_section_content(outline_text, "关键情节转折设计")
+            if twists_text:
+                # Simple parsing for twists, can be enhanced
+                twist_parts = twists_text.split("### 情节转折点")
+                for part in twist_parts[1:]:
+                    part = part.strip()
+                    if not part: continue
+                    twist_name = part.split("\n",1)[0].strip()
+                    outline["key_plot_twists"].append({
+                        "name": twist_name,
+                        "details": part # Store raw details for now
+                    })
+
             # 提取章节列表
-            if "## 章节列表" in outline_text:
+            if "## 章节列表" in outline_text: # Keep this specific check as it's distinct
                 chapters_part = outline_text.split("## 章节列表", 1)[1].split("##", 1)[0].strip()
                 chapter_lines = chapters_part.split("\n")
                 
@@ -239,19 +307,22 @@ class PlotArchitectAgent(BaseAgent):
                     
                     # 解析各项内容
                     if "- 主要场景:" in chapter_content:
-                        chapter_detail["scenes"] = self._extract_content(chapter_content, "- 主要场景:")
+                        chapter_detail["scenes"] = self._extract_subsection_content(chapter_content, "- 主要场景:")
                     if "- 出场人物:" in chapter_content:
-                        chapter_detail["characters"] = self._extract_content(chapter_content, "- 出场人物:")
+                        chapter_detail["characters"] = self._extract_subsection_content(chapter_content, "- 出场人物:")
                     if "- 核心事件:" in chapter_content:
-                        chapter_detail["events"] = self._extract_content(chapter_content, "- 核心事件:")
+                        chapter_detail["events"] = self._extract_subsection_content(chapter_content, "- 核心事件:")
                     if "- 目标与冲突:" in chapter_content:
-                        chapter_detail["conflicts"] = self._extract_content(chapter_content, "- 目标与冲突:")
+                        chapter_detail["conflicts"] = self._extract_subsection_content(chapter_content, "- 目标与冲突:")
                     if "- 关键转折点:" in chapter_content:
-                        chapter_detail["turning_points"] = self._extract_content(chapter_content, "- 关键转折点:")
+                        chapter_detail["turning_points"] = self._extract_subsection_content(chapter_content, "- 关键转折点:")
                     if "- 情感基调:" in chapter_content:
-                        chapter_detail["emotional_tone"] = self._extract_content(chapter_content, "- 情感基调:")
-                    if "- 伏笔/悬念:" in chapter_content or "- 伏笔或悬念设置:" in chapter_content:
-                        chapter_detail["foreshadowing"] = self._extract_content(chapter_content, "- 伏笔/悬念:") or self._extract_content(chapter_content, "- 伏笔或悬念设置:")
+                        chapter_detail["emotional_tone"] = self._extract_subsection_content(chapter_content, "- 情感基调:")
+                    if "- 伏笔/悬念:" in chapter_content or "- 伏笔或悬念设置:" in chapter_content: # Existing
+                        foreshadowing_content = self._extract_subsection_content(chapter_content, "- 伏笔/悬念:")
+                        if not foreshadowing_content: # Try alternative marker
+                             foreshadowing_content = self._extract_subsection_content(chapter_content, "- 伏笔或悬念设置:")
+                        chapter_detail["foreshadowing"] = foreshadowing_content
                     
                     chapter_details.append(chapter_detail)
                 
@@ -261,7 +332,7 @@ class PlotArchitectAgent(BaseAgent):
         
         return plot_outlines
     
-    def _extract_content(self, text: str, marker: str) -> str:
+    def _extract_subsection_content(self, text: str, marker: str) -> str: # Renamed from _extract_content
         """
         从文本中提取特定标记后的内容
         
